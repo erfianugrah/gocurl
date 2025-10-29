@@ -1,4 +1,7 @@
 linters-settings:
+  govet:
+    enable:
+      - shadow
   gocyclo:
     min-complexity: 15
   dupl:
@@ -26,7 +29,6 @@ linters:
     - errcheck
     - gosimple
     - govet
-    - shadow
     - ineffassign
     - staticcheck
     - typecheck
@@ -60,7 +62,6 @@ run:
   tests: true
 
 output:
-  formats:
-    - format: colored-line-number
+  formats: colored-line-number
   print-issued-lines: true
   print-linter-name: true
