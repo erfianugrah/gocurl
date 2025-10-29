@@ -3,6 +3,7 @@ package client
 import (
 	"crypto/tls"
 	"net/http/httptrace"
+	"sync"
 	"time"
 )
 
@@ -35,6 +36,7 @@ type TimingBreakdown struct {
 
 // Tracer captures detailed timing information during HTTP request execution
 type Tracer struct {
+	mu           sync.Mutex
 	dnsStart     time.Time
 	dnsEnd       time.Time
 	connStart    time.Time
@@ -62,51 +64,76 @@ func NewTracer() *Tracer {
 func (t *Tracer) ClientTrace() *httptrace.ClientTrace {
 	return &httptrace.ClientTrace{
 		DNSStart: func(_ httptrace.DNSStartInfo) {
+			t.mu.Lock()
 			t.dnsStart = time.Now()
+			t.mu.Unlock()
 		},
 		DNSDone: func(_ httptrace.DNSDoneInfo) {
+			t.mu.Lock()
 			t.dnsEnd = time.Now()
+			t.mu.Unlock()
 		},
 		ConnectStart: func(_, _ string) {
+			t.mu.Lock()
 			t.connStart = time.Now()
+			t.mu.Unlock()
 		},
 		ConnectDone: func(_, _ string, _ error) {
+			t.mu.Lock()
 			t.connEnd = time.Now()
+			t.mu.Unlock()
 		},
 		TLSHandshakeStart: func() {
+			t.mu.Lock()
 			t.tlsStart = time.Now()
+			t.mu.Unlock()
 		},
 		TLSHandshakeDone: func(state tls.ConnectionState, _ error) {
+			t.mu.Lock()
 			t.tlsEnd = time.Now()
 			t.tlsState = &state
+			t.mu.Unlock()
 		},
 		WroteRequest: func(_ httptrace.WroteRequestInfo) {
+			t.mu.Lock()
 			t.reqStart = time.Now()
+			t.mu.Unlock()
 		},
 		GotFirstResponseByte: func() {
+			t.mu.Lock()
 			t.respStart = time.Now()
+			t.mu.Unlock()
 		},
 		GotConn: func(info httptrace.GotConnInfo) {
+			t.mu.Lock()
 			t.timing.ConnectionReused = info.Reused
 			t.timing.ConnectionIdle = info.WasIdle
 			t.timing.IdleTime = Duration(info.IdleTime)
+			t.mu.Unlock()
 		},
 	}
 }
 
 // Start marks the beginning of the overall request timing
 func (t *Tracer) Start() {
+	t.mu.Lock()
 	t.totalStart = time.Now()
+	t.mu.Unlock()
 }
 
 // End marks the end of the overall request and calculates all durations
 func (t *Tracer) End() {
+	t.mu.Lock()
 	t.respEnd = time.Now()
+	t.mu.Unlock()
 	t.calculateDurations()
 }
 
 // calculateDurations computes all timing durations from captured timestamps
 func (t *Tracer) calculateDurations() {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
 	// Calculate individual phase durations
 	if !t.dnsStart.IsZero() && !t.dnsEnd.IsZero() {
 		t.timing.DNSLookup = Duration(t.dnsEnd.Sub(t.dnsStart))

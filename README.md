@@ -1,8 +1,35 @@
 # gocurl
 
+[![Build and Test](https://github.com/erfianugrah/gocurl/actions/workflows/ci.yml/badge.svg)](https://github.com/erfianugrah/gocurl/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Go Report Card](https://goreportcard.com/badge/github.com/erfianugrah/gocurl)](https://goreportcard.com/report/github.com/erfianugrah/gocurl)
+
 > A modern HTTP performance measurement tool built in Go
 
 `gocurl` is a production-grade CLI tool for measuring HTTP performance with detailed timing breakdowns, load testing capabilities, and beautiful output formatting.
+
+## Table of Contents
+
+- [Features](#features)
+- [Quick Start](#quick-start)
+  - [Installation](#installation)
+  - [Requirements](#requirements)
+- [Usage](#usage)
+  - [Basic Usage](#basic-usage)
+  - [Output Formats](#output-formats)
+  - [Load Testing](#load-testing)
+  - [Multi-URL Testing](#multi-url-testing)
+  - [Custom Headers and Methods](#custom-headers-and-methods)
+  - [Response Inspection](#response-inspection-curl-like)
+  - [Connection Control](#connection-control)
+  - [Streaming & Buffering Detection](#streaming--buffering-detection)
+- [Command Reference](#command-reference)
+- [Examples](#examples)
+- [Building from Source](#building-from-source)
+- [Development](#development)
+- [CI/CD](#cicd)
+- [Contributing](#contributing)
+- [License](#license)
 
 ## Features
 
@@ -22,19 +49,21 @@
 
 ### Installation
 
+#### From Source
+
 ```bash
 # Clone the repository
 git clone https://github.com/erfianugrah/gocurl.git
 cd gocurl
 
-# Build the binary
-go build -o gocurl ./cmd/gocurl
+# Build using Make
+make build
 
-# Optional: Install to your PATH
-sudo mv gocurl /usr/local/bin/
+# Install to your PATH
+make install
 ```
 
-Or build to a specific location:
+Or build manually:
 
 ```bash
 # Build to bin/ directory
@@ -44,9 +73,20 @@ go build -o bin/gocurl ./cmd/gocurl
 ./bin/gocurl https://example.com
 ```
 
+#### From GitHub Releases
+
+Download pre-built binaries from the [Releases page](https://github.com/erfianugrah/gocurl/releases).
+
+```bash
+# Example for Linux
+wget https://github.com/erfianugrah/gocurl/releases/latest/download/gocurl_Linux_x86_64.tar.gz
+tar xzf gocurl_Linux_x86_64.tar.gz
+sudo mv gocurl /usr/local/bin/
+```
+
 ### Requirements
 
-- Go 1.20 or later
+- **Go 1.21 or later** (for building from source)
 - No external runtime dependencies
 
 ## Usage
@@ -531,59 +571,84 @@ Status Code Distribution:
 
 ## Building from Source
 
-### Standard Build
+### Using Make (Recommended)
+
 ```bash
 # Build for your current platform
-go build -o gocurl ./cmd/gocurl
+make build
 
-# Run
-./gocurl https://example.com
+# Build for all platforms
+make build-all
+
+# Build for specific platforms
+make build-linux    # Linux AMD64
+make build-darwin   # macOS AMD64
+make build-windows  # Windows AMD64
+
+# Install to /usr/local/bin
+make install
+
+# View all available targets
+make help
 ```
 
-### Cross-Platform Build
+### Manual Build
+
 ```bash
-# Linux
-GOOS=linux GOARCH=amd64 go build -o gocurl-linux-amd64 ./cmd/gocurl
+# Build for your current platform
+go build -o bin/gocurl ./cmd/gocurl
 
-# macOS
-GOOS=darwin GOARCH=amd64 go build -o gocurl-darwin-amd64 ./cmd/gocurl
-GOOS=darwin GOARCH=arm64 go build -o gocurl-darwin-arm64 ./cmd/gocurl
+# Cross-platform build
+GOOS=linux GOARCH=amd64 go build -o bin/gocurl-linux-amd64 ./cmd/gocurl
+GOOS=darwin GOARCH=amd64 go build -o bin/gocurl-darwin-amd64 ./cmd/gocurl
+GOOS=windows GOARCH=amd64 go build -o bin/gocurl-windows-amd64.exe ./cmd/gocurl
 
-# Windows
-GOOS=windows GOARCH=amd64 go build -o gocurl-windows-amd64.exe ./cmd/gocurl
-```
-
-### Optimized Build
-```bash
-# Smaller binary with optimizations
-go build -ldflags="-s -w" -o gocurl ./cmd/gocurl
+# Optimized build with version info
+go build -ldflags="-s -w -X main.version=$(git describe --tags)" -o bin/gocurl ./cmd/gocurl
 ```
 
 ## Development
 
 ### Running Tests
+
 ```bash
-# Run all tests
+# Using Make
+make test
+
+# With coverage report
+make test-coverage
+
+# Or use go directly
 go test ./...
+go test -v -cover ./...
+```
 
-# Run with coverage
-go test ./... -cover
+### Code Quality
 
-# Generate coverage report
-go test ./... -coverprofile=coverage.out
-go tool cover -html=coverage.out
+```bash
+# Run linter
+make lint
+
+# Format code
+make fmt
+
+# Run all CI checks
+make ci
 ```
 
 ### Project Structure
 ```
 gocurl/
-├── cmd/gocurl/         # CLI entry point
+├── cmd/gocurl/           # CLI entry point
 ├── internal/
-│   ├── app/           # Application logic
-│   ├── client/        # HTTP client with tracing
-│   ├── metrics/       # Statistics & analysis
-│   └── output/        # Output formatters
-└── docs/              # Documentation
+│   ├── app/             # Application logic
+│   ├── client/          # HTTP client with tracing
+│   ├── metrics/         # Statistics & analysis
+│   └── output/          # Output formatters
+├── docs/                # Documentation
+├── .github/workflows/   # CI/CD workflows
+├── Makefile            # Build automation
+└── .goreleaser.yml     # Release configuration
 ```
 
 ## Troubleshooting
@@ -644,19 +709,62 @@ A: Use the `-k` flag to skip verification, but this should only be used in testi
 **Q: How accurate are the timing measurements?**
 A: Very accurate. gocurl uses Go's `httptrace` package which provides microsecond-precision timing for each phase of the request.
 
+## CI/CD
+
+This project uses GitHub Actions for continuous integration and deployment:
+
+- **Build and Test**: Runs on every push and PR
+  - Builds on Linux, macOS, and Windows
+  - Runs full test suite with race detection
+  - Linting (advisory, non-blocking)
+  - Coverage reporting to Codecov
+
+- **Releases**: Automated with GoReleaser
+  - Triggered on version tags (e.g., `v1.0.0`)
+  - Builds for 6 platforms (Linux/macOS/Windows × AMD64/ARM64)
+  - Generates archives and checksums
+  - Creates GitHub release with binaries
+
+To create a release:
+```bash
+git tag -a v1.0.0 -m "Release v1.0.0"
+git push origin v1.0.0
+```
+
 ## Contributing
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+Contributions are welcome! Here's how to get started:
+
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/amazing-feature`)
+3. Make your changes
+4. Run tests and linting:
+   ```bash
+   make test
+   make lint
+   ```
+5. Commit your changes (`git commit -m 'Add amazing feature'`)
+6. Push to the branch (`git push origin feature/amazing-feature`)
+7. Open a Pull Request
+
+Please ensure:
+- All tests pass
+- Code follows Go conventions
+- New features include tests
+- Documentation is updated
 
 ## License
 
-MIT License - See LICENSE file for details
+MIT License - See [LICENSE](LICENSE) file for details
+
+Copyright (c) 2025 Erfi Anugrah
 
 ## Acknowledgments
 
 - Built with [Cobra](https://github.com/spf13/cobra) - CLI framework
 - Tables powered by [go-pretty](https://github.com/jedib0t/go-pretty)
 - Colors by [fatih/color](https://github.com/fatih/color)
+- Releases automated with [GoReleaser](https://goreleaser.com/)
 
 Inspired by tools like curl, httpstat, hey, and vegeta.
 
