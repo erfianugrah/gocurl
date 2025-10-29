@@ -13,13 +13,16 @@ gocurl/
 │   │   ├── app.go          # Main application orchestration
 │   │   ├── signals.go      # Signal handling (SIGINT/SIGTERM)
 │   │   ├── urls.go         # URL list reader
-│   │   └── urls_test.go    # Tests (11)
+│   │   └── urls_test.go    # Tests
 │   │
 │   ├── client/             # HTTP client
+│   │   ├── duration.go     # Duration type with JSON marshaling
 │   │   ├── http.go         # HTTP client wrapper
 │   │   ├── tracer.go       # httptrace integration
-│   │   ├── http_test.go    # Tests (10)
-│   │   └── tracer_test.go  # Tests (4)
+│   │   ├── streaming.go    # Streaming analysis & buffering detection
+│   │   ├── http_test.go    # Tests
+│   │   ├── tracer_test.go  # Tests
+│   │   └── streaming_test.go # Tests
 │   │
 │   ├── metrics/            # Metrics collection
 │   │   ├── collector.go    # Metrics aggregation
@@ -32,7 +35,8 @@ gocurl/
 │       ├── table.go        # Table output with go-pretty
 │       ├── json.go         # JSON output
 │       ├── graph.go        # Graph/histogram output
-│       └── json_test.go    # Tests (5)
+│       ├── streaming.go    # Streaming metrics output
+│       └── json_test.go    # Tests
 │
 ├── bin/                    # Compiled binaries
 │   └── gocurl             # Main binary
@@ -41,15 +45,15 @@ gocurl/
 ├── go.sum                 # Dependency checksums
 ├── coverage.out           # Test coverage report
 │
-└── Documentation/
-    ├── CLAUDE.md          # Implementation guide
-    ├── README.md          # User documentation
-    ├── QUICKSTART.md      # Quick reference
-    ├── FEATURES.md        # New features docs
-    ├── SUMMARY.md         # Enhancement summary
-    ├── TEST_SUMMARY.md    # Test documentation
-    ├── COMPLETION_REPORT.md # Project completion
-    └── PROJECT_STRUCTURE.md # This file
+├── docs/                   # Documentation
+│   ├── README.md          # Documentation index
+│   ├── FEATURES.md        # Feature documentation
+│   ├── PROJECT_STRUCTURE.md # This file
+│   └── STREAMING_METRICS_GUIDE.md # Streaming metrics guide
+│
+├── README.md              # Main user documentation
+├── go.mod                 # Go module definition
+└── go.sum                 # Dependency checksums
 ```
 
 ## Package Overview
@@ -69,12 +73,12 @@ Application orchestration and business logic. Handles URL reading, application f
 **Purpose**: Application logic, URL management
 
 ### internal/client
-HTTP client implementation with httptrace integration for detailed timing measurements.
+HTTP client implementation with httptrace integration for detailed timing measurements and streaming analysis.
 
-**Files**: 2 main + 2 test
-**Tests**: 14
-**Coverage**: 85.7%
-**Purpose**: HTTP operations, timing measurement
+**Files**: 4 main + 3 test
+**Tests**: Comprehensive (http, tracer, streaming)
+**Coverage**: ~70%
+**Purpose**: HTTP operations, timing measurement, streaming analysis, buffering detection
 
 ### internal/metrics
 Metrics collection, statistical analysis, and histogram generation.
@@ -85,22 +89,22 @@ Metrics collection, statistical analysis, and histogram generation.
 **Purpose**: Statistics, percentiles, histograms
 
 ### internal/output
-Output formatters for different formats (table, JSON, graph).
+Output formatters for different formats (table, JSON, graph, streaming).
 
-**Files**: 4 main + 1 test
-**Tests**: 5
-**Coverage**: 4.0%
-**Purpose**: Output formatting
+**Files**: 5 main + 1 test
+**Tests**: JSON output tests
+**Coverage**: ~15%
+**Purpose**: Output formatting, streaming metrics display
 
 ## File Counts
 
 | Category | Count |
 |----------|-------|
-| Go source files | 13 |
-| Test files | 6 |
-| Documentation | 8 |
-| Total Go files | 19 |
-| Total lines of code | ~3,500 |
+| Go source files | 16 |
+| Test files | 7 |
+| Documentation | 5 (4 in docs/ + README.md) |
+| Total Go files | 23 |
+| Total lines of code | ~4,500 |
 
 ## Dependencies
 

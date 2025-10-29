@@ -6,7 +6,6 @@ Internal documentation for gocurl architecture and design.
 
 See the main documentation:
 - [**Main README**](../README.md) - Complete user guide with all features
-- [**Quick Start**](../QUICKSTART.md) - Get started in 60 seconds
 
 ## For Developers
 
