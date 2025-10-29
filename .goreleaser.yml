@@ -13,19 +13,21 @@ builds:
     goarch:
       - amd64
       - arm64
-    main: cmd/gocurl/main.go
+    main: ./cmd/gocurl
     binary: gocurl
     ldflags:
       - -s -w -X main.version={{.Version}} -X main.commit={{.Commit}} -X main.date={{.Date}}
 
 archives:
-  - format: tar.gz
-    name_template: >-
+  - name_template: >-
       {{ .ProjectName }}_
       {{- title .Os }}_
       {{- if eq .Arch "amd64" }}x86_64
       {{- else if eq .Arch "386" }}i386
       {{- else }}{{ .Arch }}{{ end }}
+    files:
+      - LICENSE
+      - README.md
     format_overrides:
       - goos: windows
         format: zip
@@ -34,7 +36,7 @@ checksum:
   name_template: 'checksums.txt'
 
 snapshot:
-  name_template: "{{ incpatch .Version }}-next"
+  version_template: "{{ incpatch .Version }}-next"
 
 changelog:
   sort: asc
