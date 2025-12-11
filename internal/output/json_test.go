@@ -11,7 +11,7 @@ import (
 )
 
 func TestNewJSONFormatter(t *testing.T) {
-	formatter := NewJSONFormatter(false)
+	formatter := NewJSONFormatter(false, "v1.0.0", "abc1234", "2025-01-01T00:00:00Z")
 
 	if formatter == nil {
 		t.Fatal("NewJSONFormatter returned nil")
@@ -23,7 +23,7 @@ func TestNewJSONFormatter(t *testing.T) {
 }
 
 func TestJSONFormatterFormat(t *testing.T) {
-	formatter := NewJSONFormatter(false)
+	formatter := NewJSONFormatter(false, "v1.0.0", "abc1234", "2025-01-01T00:00:00Z")
 
 	timing := &client.TimingBreakdown{
 		DNSLookup:        client.Duration(10 * time.Millisecond),
@@ -60,7 +60,7 @@ func TestJSONFormatterFormat(t *testing.T) {
 }
 
 func TestJSONFormatterWrite(t *testing.T) {
-	formatter := NewJSONFormatter(false)
+	formatter := NewJSONFormatter(false, "v1.0.0", "abc1234", "2025-01-01T00:00:00Z")
 
 	timing := &client.TimingBreakdown{
 		Total:      client.Duration(100 * time.Millisecond),
@@ -87,7 +87,7 @@ func TestJSONFormatterWrite(t *testing.T) {
 }
 
 func TestJSONFormatterFormatMultiple(t *testing.T) {
-	formatter := NewJSONFormatter(false)
+	formatter := NewJSONFormatter(false, "v1.0.0", "abc1234", "2025-01-01T00:00:00Z")
 
 	stats := &metrics.Stats{
 		TotalRequests:      100,
@@ -133,7 +133,7 @@ func TestJSONFormatterFormatMultiple(t *testing.T) {
 }
 
 func TestJSONFormatterWriteMultiple(t *testing.T) {
-	formatter := NewJSONFormatter(false)
+	formatter := NewJSONFormatter(false, "v1.0.0", "abc1234", "2025-01-01T00:00:00Z")
 
 	stats := &metrics.Stats{
 		TotalRequests:      10,
