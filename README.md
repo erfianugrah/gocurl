@@ -37,6 +37,16 @@
 - 🎨 **Waterfall Timeline** - Chrome DevTools-style visual timeline showing request phases
 - 📊 **Multiple Output Formats** - Table, JSON, or ASCII graphs with histograms
 - ⚡ **Load Testing** - Concurrent requests with configurable workers
+- 🎯 **URL Parameterization** - Test query parameter variants (e.g., different image sizes)
+- 🔥 **Warmup Phase** - Exclude initial requests from metrics to eliminate cold-start effects
+- ⏱️ **Rate Limiting** - Control RPS for realistic load testing
+- 📊 **CSV Export** - Export individual request timings for deep analysis in spreadsheets or data pipelines
+- 🎭 **Request Body Templates** - Dynamic data generation with {{seq}}, {{uuid}}, {{timestamp}}, {{random}} variables
+- 📈 **Ramp-up Configuration** - Gradually increase concurrency to test autoscaling and find performance limits
+- 🎯 **Selective Header Capture** - Capture specific response headers (Cache-Control, ETag, etc.) without capturing everything
+- 🔀 **Redirect Tracking** - Automatically track effective URLs and redirect counts in response data
+- 📦 **Range Request Support** - Test partial content delivery with HTTP Range headers (HTTP 206)
+- 🎬 **Scenario Testing** - Multi-step workflows with variable extraction, session management, and expectations
 - 📈 **Statistical Analysis** - Percentiles (p50, p90, p95, p99, p99.9, p99.99)
 - 🎯 **Multi-URL Testing** - Test multiple endpoints from files or stdin
 - 🔐 **TLS Information** - Version, cipher suite, and SNI details
@@ -163,11 +173,201 @@ Latency Distribution:
 gocurl -n 100 -c 10 https://api.example.com
 ```
 
-#### Advanced Load Test
+#### Advanced Load Test with Rate Limiting
 ```bash
-# 1000 requests, 50 concurrent, with graph output
-gocurl -n 1000 -c 50 -o graph https://api.example.com
+# 1000 requests, 50 concurrent, limited to 100 RPS
+gocurl -n 1000 -c 50 --rps 100 https://api.example.com
 ```
+
+#### Load Test with Warmup
+```bash
+# 100 requests, skip first 10 from metrics
+gocurl -n 100 -c 10 --warmup 10 https://api.example.com
+```
+
+#### URL Parameterization
+Test multiple query parameter variants:
+```bash
+# Create query params file
+cat > params.txt <<EOF
+imwidth=1920
+imwidth=1080
+imwidth=480
+EOF
+
+# Test all variants (1 URL × 3 params = 3 total URLs)
+gocurl https://cdn.example.com/image.jpg --query-params params.txt -n 10 -c 5
+```
+
+#### Combined Load Testing
+Combine all features for comprehensive testing:
+```bash
+# Multiple URLs with query params, warmup, and rate limiting
+gocurl -L urls.txt \
+  --query-params params.txt \
+  -n 50 \
+  -c 10 \
+  --warmup 5 \
+  --rps 20
+```
+
+#### CSV Export
+Export individual request data for analysis:
+```bash
+# Basic CSV export
+gocurl https://api.example.com -n 100 -c 10 --export-csv results.csv
+
+# With warmup (excluded from CSV)
+gocurl https://api.example.com -n 100 -c 10 --warmup 10 --export-csv results.csv
+
+# Multiple URLs with all features
+gocurl -L urls.txt --query-params params.txt \
+  -n 50 -c 10 --warmup 5 --rps 20 \
+  --export-csv load-test.csv
+```
+
+**CSV contains** (12 columns):
+- timestamp, url, status_code
+- dns_lookup_ms, tcp_connection_ms, tls_handshake_ms
+- server_processing_ms, content_transfer_ms, total_ms
+- response_size_bytes, connection_reused, error
+
+**Analyze with tools:**
+```bash
+# Command-line analysis
+awk -F',' 'NR>1 {sum+=$9; count++} END {print "Avg:", sum/count "ms"}' results.csv
+
+# Find slowest requests
+awk -F',' 'NR>1 {print $9, $2}' results.csv | sort -rn | head -10
+
+# Import into Excel, Google Sheets, or data analysis tools
+# - Create pivot tables
+# - Generate custom charts
+# - Statistical modeling
+```
+
+#### Request Body Templates
+
+Generate dynamic request bodies with template variables for realistic load testing:
+
+**Available Variables:**
+- `{{seq}}` - Sequential request number (1-indexed)
+- `{{uuid}}` - Unique UUID v4 for each request
+- `{{timestamp}}` - Unix timestamp in seconds
+- `{{timestamp_ms}}` - Unix timestamp in milliseconds
+- `{{random}}` - Random number (0-999999)
+- `{{url_index}}` - Index of current URL (0-indexed, useful with `-L`)
+
+**Basic Example:**
+```bash
+# Create users with unique IDs
+gocurl -X POST \
+  -H "Content-Type: application/json" \
+  --data '{"user_id": "{{uuid}}", "request_num": {{seq}}, "timestamp": {{timestamp}}}' \
+  https://api.example.com/users \
+  -n 10 -c 3
+```
+
+**Event Simulation:**
+```bash
+# Simulate event stream with realistic data
+gocurl -X POST \
+  -H "Content-Type: application/json" \
+  --data '{"event_id": "{{uuid}}", "seq": {{seq}}, "ts": {{timestamp_ms}}, "value": {{random}}}' \
+  https://api.example.com/events \
+  -n 1000 -c 20 --rps 50
+```
+
+**Multi-URL with Templates:**
+```bash
+# Different request bodies for each URL
+cat > endpoints.txt <<EOF
+https://api.example.com/users
+https://api.example.com/orders
+https://api.example.com/events
+EOF
+
+# Each URL gets requests with unique data
+gocurl -L endpoints.txt \
+  -X POST \
+  -H "Content-Type: application/json" \
+  --data '{"id": "{{uuid}}", "url_idx": {{url_index}}, "seq": {{seq}}}' \
+  -n 20 -c 5
+```
+
+**When to Use Templates:**
+- Testing ID generation and uniqueness constraints
+- Simulating real user behavior with varied data
+- Load testing time-series databases
+- Stress testing with high-cardinality data
+- Avoiding cache hits with unique request bodies
+
+#### Ramp-up Configuration
+
+Gradually increase concurrency to find performance limits and test autoscaling:
+
+**Basic Ramp-up:**
+```bash
+# Ramp from 1 to 50 workers over 30 seconds
+gocurl https://api.example.com \
+  -n 1000 \
+  -c 50 \
+  --ramp-up 30s
+```
+
+Output shows:
+```
+Ramp-up: gradually increasing from 1 to 50 workers over 30s
+Running load test: 1 URLs x 1000 requests = 1000 total requests with concurrency 50
+```
+
+**Find Breaking Point:**
+```bash
+# Gradually increase to 100 workers over 2 minutes
+gocurl https://api.example.com/heavy \
+  -n 5000 \
+  -c 100 \
+  --ramp-up 2m \
+  --export-csv rampup-results.csv
+
+# Analyze when errors start occurring
+awk -F',' 'NR>1 {if ($12!="") print $1, $12}' rampup-results.csv
+```
+
+**Test Autoscaling:**
+```bash
+# Test if autoscaler responds to gradual load
+gocurl https://k8s-app.example.com \
+  -n 10000 \
+  -c 200 \
+  --ramp-up 5m \
+  --rps 100 \
+  --export-csv autoscale-test.csv
+```
+
+**Combined with Rate Limiting:**
+```bash
+# Controlled ramp-up with rate limiting
+gocurl https://api.example.com \
+  -n 2000 \
+  -c 50 \
+  --ramp-up 1m \
+  --rps 100 \
+  --warmup 10
+```
+
+**When to Use Ramp-up:**
+- Testing autoscaling behavior (Kubernetes HPA, AWS Auto Scaling)
+- Finding the exact concurrency level where performance degrades
+- Avoiding thundering herd problems in initial load tests
+- Testing gradual traffic increases (like Black Friday scenarios)
+- Warming up connection pools and caches progressively
+
+**How It Works:**
+- Workers start at t=0, t=interval, t=2*interval, ..., t=duration
+- Linear distribution: `interval = duration / (concurrency - 1)`
+- Example: 10 workers over 30s = 1 worker every 3.33 seconds
+- All workers continue running once started (not a wave pattern)
 
 ### Multi-URL Testing
 
@@ -361,10 +561,15 @@ gocurl --no-color https://api.example.com
 |------|-------|-------------|---------|
 | `--requests` | `-n` | Number of requests per URL | `1` |
 | `--concurrency` | `-c` | Concurrent workers | `1` |
+| `--warmup` | | Number of warmup requests to skip from metrics (per URL) | `0` |
+| `--rps` | | Rate limit: requests per second (0 = unlimited) | `0` |
+| `--ramp-up` | | Gradually increase concurrency over duration (e.g., '30s', '1m') | |
+| `--export-csv` | | Export individual request data to CSV file | |
 | `--url-list` | `-L` | File with URLs (use '-' for stdin) | |
+| `--query-params` | | File with query parameters (one per line) to append to each URL | |
 | `--method` | `-X` | HTTP method | `GET` |
 | `--header` | `-H` | Custom header (repeatable) | |
-| `--data` | | Request body | |
+| `--data` | | Request body (supports template variables: {{seq}}, {{uuid}}, {{timestamp}}, {{timestamp_ms}}, {{random}}, {{url_index}}) | |
 | `--timeout` | | Request timeout | `30s` |
 | `--insecure` | `-k` | Skip TLS verification | `false` |
 
@@ -383,6 +588,9 @@ gocurl --no-color https://api.example.com
 | `--head` | `-I` | Make HEAD request (show headers only) | `false` |
 | `--show-body` | | Show response body in output | `false` |
 | `--show-error` | | Show response body for errors (4xx, 5xx) | `false` |
+| `--capture-header` | | Capture specific response headers (repeatable) | |
+| `--range` | | Request partial content (e.g., 'bytes=0-1023') | |
+| `--scenario` | `-s` | Execute multi-step scenario from YAML file | |
 
 ### Streaming & Performance Analysis Flags
 
@@ -504,6 +712,31 @@ CURRENT_P95=$(jq '.p95' current.json)
 echo "Baseline P95: ${BASELINE_P95}ms"
 echo "Current P95: ${CURRENT_P95}ms"
 ```
+
+### Image CDN Testing with Query Parameters
+
+```bash
+# Test different image sizes
+cat > image-sizes.txt <<EOF
+imwidth=1920
+imwidth=1080
+imwidth=480
+EOF
+
+# Test CDN with different image widths
+gocurl https://cdn.example.com/photo.jpg \
+  --query-params image-sizes.txt \
+  -n 20 \
+  -c 5 \
+  --warmup 3 \
+  --rps 10
+```
+
+This tests:
+- 3 different image sizes
+- 20 requests per size = 60 total
+- First 3 requests per size excluded (warmup)
+- Limited to 10 requests/second
 
 ## Output Examples
 
@@ -686,11 +919,15 @@ gocurl -v https://api.example.com
 | Multiple URLs | ❌ | ✅ | ❌ | ❌ |
 | Histograms | ❌ | ✅ | ❌ | ✅ |
 | JSON output | ❌ | ✅ | ✅ | ❌ |
+| CSV export | ❌ | ✅ | ❌ | ❌ |
 | Color output | ❌ | ✅ | ✅ | ❌ |
 | Performance assessments | ❌ | ✅ | ❌ | ❌ |
 | Streaming analysis | ❌ | ✅ | ❌ | ❌ |
 | Buffering detection | ❌ | ✅ | ❌ | ❌ |
 | DNS/Connection override | ✅ | ✅ | ❌ | ❌ |
+| Scenario testing | ❌ | ✅ | ❌ | ❌ |
+| Range requests | ❌ | ✅ | ❌ | ❌ |
+| Redirect tracking | ❌ | ✅ | ❌ | ❌ |
 
 ## FAQ
 

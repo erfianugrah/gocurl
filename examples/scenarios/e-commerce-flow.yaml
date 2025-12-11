@@ -1,0 +1,69 @@
+name: "E-Commerce User Journey"
+description: "Complete shopping workflow: browse → add to cart → checkout"
+
+config:
+  timeout: "30s"
+  insecure: false
+
+steps:
+  - name: "Homepage - Get Featured Products"
+    url: "https://httpbin.org/json"
+    method: GET
+    extract:
+      session_id: "slideshow.title"  # Simulated session ID
+    expect:
+      status_codes: [200, 503]
+
+  - name: "Product Search"
+    url: "https://httpbin.org/get?q=laptop&category=electronics"
+    method: GET
+    headers:
+      X-Session-ID: "${session_id}"
+    expect:
+      status_codes: [200, 503]
+
+  - name: "Get Product Details"
+    url: "https://httpbin.org/get?product_id=12345"
+    method: GET
+    headers:
+      X-Session-ID: "${session_id}"
+    expect:
+      status_codes: [200, 503]
+
+  - name: "Add to Cart"
+    url: "https://httpbin.org/post"
+    method: POST
+    headers:
+      Content-Type: "application/json"
+      X-Session-ID: "${session_id}"
+    body: '{"product_id": "12345", "quantity": 1, "price": 999.99}'
+    expect:
+      status_codes: [200, 201, 503]
+
+  - name: "View Cart"
+    url: "https://httpbin.org/get?cart=true"
+    method: GET
+    headers:
+      X-Session-ID: "${session_id}"
+    expect:
+      status_codes: [200, 503]
+
+  - name: "Checkout - Create Order"
+    url: "https://httpbin.org/post"
+    method: POST
+    headers:
+      Content-Type: "application/json"
+      X-Session-ID: "${session_id}"
+    body: '{"payment_method": "credit_card", "shipping_address": "123 Main St"}'
+    extract:
+      order_id: "slideshow.author"  # Simulated order ID
+    expect:
+      status_codes: [200, 201, 503]
+
+  - name: "Order Confirmation"
+    url: "https://httpbin.org/get?order_id=${order_id}"
+    method: GET
+    headers:
+      X-Session-ID: "${session_id}"
+    expect:
+      status_codes: [200, 503]

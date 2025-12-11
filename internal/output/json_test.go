@@ -26,12 +26,12 @@ func TestJSONFormatterFormat(t *testing.T) {
 	formatter := NewJSONFormatter(false)
 
 	timing := &client.TimingBreakdown{
-		DNSLookup: client.Duration(10 * time.Millisecond),
-		TCPConnection: client.Duration(20 * time.Millisecond),
-		TLSHandshake: client.Duration(30 * time.Millisecond),
+		DNSLookup:        client.Duration(10 * time.Millisecond),
+		TCPConnection:    client.Duration(20 * time.Millisecond),
+		TLSHandshake:     client.Duration(30 * time.Millisecond),
 		ServerProcessing: client.Duration(40 * time.Millisecond),
-		ContentTransfer: client.Duration(50 * time.Millisecond),
-		Total: client.Duration(150 * time.Millisecond),
+		ContentTransfer:  client.Duration(50 * time.Millisecond),
+		Total:            client.Duration(150 * time.Millisecond),
 		StatusCode:       200,
 		ContentLength:    1024,
 		ResponseSize:     1024,
@@ -63,7 +63,7 @@ func TestJSONFormatterWrite(t *testing.T) {
 	formatter := NewJSONFormatter(false)
 
 	timing := &client.TimingBreakdown{
-		Total: client.Duration(100 * time.Millisecond),
+		Total:      client.Duration(100 * time.Millisecond),
 		StatusCode: 200,
 	}
 

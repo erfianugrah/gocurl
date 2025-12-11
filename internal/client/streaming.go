@@ -21,22 +21,22 @@ type StreamMetrics struct {
 	AverageChunkSize int64         `json:"average_chunk_size"`
 
 	// HTTP/2 specific
-	Protocol         string        `json:"protocol"` // "HTTP/2", "HTTP/1.1", etc.
-	StreamID         uint32        `json:"stream_id,omitempty"`
+	Protocol string `json:"protocol"` // "HTTP/2", "HTTP/1.1", etc.
+	StreamID uint32 `json:"stream_id,omitempty"`
 
 	// Streaming analysis
-	StreamingInfo    *StreamingInfo    `json:"streaming_info,omitempty"`
+	StreamingInfo     *StreamingInfo     `json:"streaming_info,omitempty"`
 	BufferingAnalysis *BufferingAnalysis `json:"buffering_analysis,omitempty"`
-	Stalls           []StallInfo        `json:"stalls,omitempty"`
+	Stalls            []StallInfo        `json:"stalls,omitempty"`
 }
 
 // StreamingInfo contains HTTP response header analysis for streaming detection
 type StreamingInfo struct {
 	TransferEncoding  string `json:"transfer_encoding"`
-	ContentLength     *int64 `json:"content_length"`     // nil = unknown length (streaming likely)
+	ContentLength     *int64 `json:"content_length"` // nil = unknown length (streaming likely)
 	ContentType       string `json:"content_type"`
 	CacheControl      string `json:"cache_control"`
-	XAccelBuffering   string `json:"x_accel_buffering"`  // nginx buffering control
+	XAccelBuffering   string `json:"x_accel_buffering"` // nginx buffering control
 	IsChunked         bool   `json:"is_chunked"`
 	IsStreamingLikely bool   `json:"is_streaming_likely"` // heuristic
 }
@@ -44,22 +44,22 @@ type StreamingInfo struct {
 // BufferingAnalysis contains analysis of buffering behavior
 type BufferingAnalysis struct {
 	TimeToFirstByte   Duration `json:"time_to_first_byte"`
-	FirstChunkGap     Duration `json:"first_chunk_gap"`      // Gap between first and second chunk
-	ChunkPattern      string   `json:"chunk_pattern"`        // "steady", "burst", "stalled", "buffered"
+	FirstChunkGap     Duration `json:"first_chunk_gap"` // Gap between first and second chunk
+	ChunkPattern      string   `json:"chunk_pattern"`   // "steady", "burst", "stalled", "buffered"
 	StallCount        int      `json:"stall_count"`
 	TotalStallTime    Duration `json:"total_stall_time"`
-	ChunkTimingCV     float64  `json:"chunk_timing_cv"`      // Coefficient of variation
+	ChunkTimingCV     float64  `json:"chunk_timing_cv"` // Coefficient of variation
 	BufferingDetected bool     `json:"buffering_detected"`
 
 	// Statistical metrics (objective)
-	MeanDelay         float64  `json:"mean_delay_ms"`        // Mean inter-chunk delay in milliseconds
-	StdDevDelay       float64  `json:"stddev_delay_ms"`      // Standard deviation in milliseconds
-	MinDelay          float64  `json:"min_delay_ms"`         // Minimum delay in milliseconds
-	MaxDelay          float64  `json:"max_delay_ms"`         // Maximum delay in milliseconds
+	MeanDelay   float64 `json:"mean_delay_ms"`   // Mean inter-chunk delay in milliseconds
+	StdDevDelay float64 `json:"stddev_delay_ms"` // Standard deviation in milliseconds
+	MinDelay    float64 `json:"min_delay_ms"`    // Minimum delay in milliseconds
+	MaxDelay    float64 `json:"max_delay_ms"`    // Maximum delay in milliseconds
 
 	// Deprecated: Use objective metrics instead
-	StreamingQuality  string   `json:"streaming_quality,omitempty"` // Deprecated: subjective assessment
-	Confidence        float64  `json:"confidence"`           // 0-1 confidence score based on sample size
+	StreamingQuality string  `json:"streaming_quality,omitempty"` // Deprecated: subjective assessment
+	Confidence       float64 `json:"confidence"`                  // 0-1 confidence score based on sample size
 }
 
 // StallInfo represents a pause in data delivery
@@ -189,6 +189,7 @@ func (c *Client) MeasureRequestWithStreaming(ctx context.Context, url, method st
 	if err != nil {
 		tracer.End()
 		timing := tracer.Timing()
+		timing.URL = url
 		timing.Error = err.Error()
 		return timing, nil, err
 	}
@@ -218,6 +219,7 @@ func (c *Client) MeasureRequestWithStreaming(ctx context.Context, url, method st
 	// Get metrics
 	streamMetrics := streamReader.Metrics()
 	timing := tracer.Timing()
+	timing.URL = url
 	timing.StatusCode = resp.StatusCode
 	timing.ContentLength = resp.ContentLength
 	timing.ResponseSize = streamMetrics.TotalBytes

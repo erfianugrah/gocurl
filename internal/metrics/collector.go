@@ -140,6 +140,18 @@ func (c *Collector) Reset() {
 	c.startTime = time.Now()
 }
 
+// GetTimings returns all collected timing measurements
+// This is useful for exporting raw data (e.g., to CSV)
+func (c *Collector) GetTimings() []*client.TimingBreakdown {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	// Return a copy to prevent external modification
+	timings := make([]*client.TimingBreakdown, len(c.timings))
+	copy(timings, c.timings)
+	return timings
+}
+
 // createHistogram creates a histogram of latencies with 10ms buckets
 func createHistogram(latencies []time.Duration) map[int]int {
 	histogram := make(map[int]int)

@@ -12,7 +12,9 @@ gocurl/
 │   ├── app/                # Application logic
 │   │   ├── app.go          # Main application orchestration
 │   │   ├── signals.go      # Signal handling (SIGINT/SIGTERM)
+│   │   ├── templates.go    # Request body template variables
 │   │   ├── urls.go         # URL list reader
+│   │   ├── app_test.go     # Tests (24 test cases)
 │   │   └── urls_test.go    # Tests
 │   │
 │   ├── client/             # HTTP client
@@ -22,7 +24,9 @@ gocurl/
 │   │   ├── streaming.go    # Streaming analysis & buffering detection
 │   │   ├── http_test.go    # Tests
 │   │   ├── tracer_test.go  # Tests
-│   │   └── streaming_test.go # Tests
+│   │   ├── streaming_test.go # Tests
+│   │   ├── phase2_test.go  # Tests (Phase 2 features)
+│   │   └── phase3_test.go  # Tests (Phase 3 features)
 │   │
 │   ├── metrics/            # Metrics collection
 │   │   ├── collector.go    # Metrics aggregation
@@ -30,13 +34,18 @@ gocurl/
 │   │   ├── collector_test.go # Tests (14)
 │   │   └── types_test.go   # Tests (7)
 │   │
-│   └── output/             # Output formatters
-│       ├── formatter.go    # Formatter interface
-│       ├── table.go        # Table output with go-pretty
-│       ├── json.go         # JSON output
-│       ├── graph.go        # Graph/histogram output
-│       ├── streaming.go    # Streaming metrics output
-│       └── json_test.go    # Tests
+│   ├── output/             # Output formatters
+│   │   ├── formatter.go    # Formatter interface
+│   │   ├── table.go        # Table output with go-pretty
+│   │   ├── json.go         # JSON output
+│   │   ├── graph.go        # Graph/histogram output
+│   │   ├── streaming.go    # Streaming metrics output
+│   │   ├── json_test.go    # Tests
+│   │   └── output_test.go  # Tests
+│   │
+│   └── scenario/           # Multi-step scenario testing
+│       ├── scenario.go     # Scenario execution engine
+│       └── scenario_test.go # Tests
 │
 ├── bin/                    # Compiled binaries
 │   └── gocurl             # Main binary
@@ -61,23 +70,25 @@ gocurl/
 ### cmd/gocurl
 Entry point for the CLI application. Contains Cobra command setup and flag definitions.
 
-**Files**: 2
-**Purpose**: CLI interface
+**Files**: 2 main + 1 test
+**Tests**: 42 test cases (8 test suites)
+**Coverage**: 72.2%
+**Purpose**: CLI interface, flag handling, integration tests
 
 ### internal/app
 Application orchestration and business logic. Handles URL reading, application flow, and signal handling.
 
-**Files**: 3 main + 1 test
-**Tests**: 11
-**Coverage**: 16.0%
-**Purpose**: Application logic, URL management
+**Files**: 4 main + 2 test
+**Tests**: 84 test cases
+**Coverage**: 49.1%
+**Purpose**: Application logic, URL management, template variables
 
 ### internal/client
 HTTP client implementation with httptrace integration for detailed timing measurements and streaming analysis.
 
-**Files**: 4 main + 3 test
-**Tests**: Comprehensive (http, tracer, streaming)
-**Coverage**: ~70%
+**Files**: 4 main + 5 test
+**Tests**: Comprehensive (http, tracer, streaming, Phase 2 & 3 features)
+**Coverage**: 63.8%
 **Purpose**: HTTP operations, timing measurement, streaming analysis, buffering detection
 
 ### internal/metrics
@@ -85,26 +96,34 @@ Metrics collection, statistical analysis, and histogram generation.
 
 **Files**: 2 main + 2 test
 **Tests**: 21
-**Coverage**: 98.6%
+**Coverage**: 91.5%
 **Purpose**: Statistics, percentiles, histograms
 
 ### internal/output
 Output formatters for different formats (table, JSON, graph, streaming).
 
-**Files**: 5 main + 1 test
-**Tests**: JSON output tests
-**Coverage**: ~15%
+**Files**: 5 main + 2 test
+**Tests**: JSON, table, graph output tests
+**Coverage**: 50.1%
 **Purpose**: Output formatting, streaming metrics display
+
+### internal/scenario
+Multi-step HTTP workflow testing with variable extraction and session management.
+
+**Files**: 1 main + 1 test
+**Tests**: Comprehensive scenario execution tests
+**Coverage**: 87.8%
+**Purpose**: Complex API workflow testing, session management
 
 ## File Counts
 
 | Category | Count |
 |----------|-------|
-| Go source files | 16 |
-| Test files | 7 |
+| Go source files | 20 |
+| Test files | 13 |
 | Documentation | 5 (4 in docs/ + README.md) |
-| Total Go files | 23 |
-| Total lines of code | ~4,500 |
+| Total Go files | 33 |
+| Total lines of code | ~6,000 |
 
 ## Dependencies
 
@@ -113,6 +132,7 @@ Output formatters for different formats (table, JSON, graph, streaming).
 - `github.com/jedib0t/go-pretty/v6` - Table formatting
 - `github.com/fatih/color` - Terminal colors
 - `github.com/guptarohit/asciigraph` - ASCII graphs
+- `gopkg.in/yaml.v3` - YAML parsing for scenario files
 
 ### Standard Library Usage
 - `net/http` - HTTP client

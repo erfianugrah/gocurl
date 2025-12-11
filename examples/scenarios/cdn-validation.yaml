@@ -1,0 +1,62 @@
+name: "CDN Performance & Caching Validation"
+description: "Test CDN behavior: caching, range requests, and edge performance"
+
+config:
+  timeout: "30s"
+  insecure: false
+
+steps:
+  - name: "First Request (Cold Cache)"
+    url: "https://httpbin.org/cache/3600"
+    method: GET
+    headers:
+      User-Agent: "gocurl-cdn-test/1.0"
+    expect:
+      status_codes: [200, 503]
+
+  - name: "Second Request (Warm Cache)"
+    url: "https://httpbin.org/cache/3600"
+    method: GET
+    headers:
+      User-Agent: "gocurl-cdn-test/1.0"
+    expect:
+      status_codes: [200, 304, 503]
+
+  - name: "Test Cache Validation (If-None-Match)"
+    url: "https://httpbin.org/etag/test-etag-123"
+    method: GET
+    headers:
+      If-None-Match: '"test-etag-123"'
+    expect:
+      status_codes: [200, 304, 503]
+
+  - name: "Test Cache Control Headers"
+    url: "https://httpbin.org/response-headers?Cache-Control=max-age=3600&ETag=abc123"
+    method: GET
+    expect:
+      status_codes: [200, 503]
+
+  - name: "Test Vary Header"
+    url: "https://httpbin.org/response-headers?Vary=Accept-Encoding"
+    method: GET
+    headers:
+      Accept-Encoding: "gzip, deflate"
+    expect:
+      status_codes: [200, 503]
+
+  - name: "Test Conditional Request (If-Modified-Since)"
+    url: "https://httpbin.org/cache"
+    method: GET
+    headers:
+      If-Modified-Since: "Mon, 01 Jan 2024 00:00:00 GMT"
+    expect:
+      status_codes: [200, 304, 503]
+
+  - name: "Test CDN Purge/Bypass"
+    url: "https://httpbin.org/cache/3600"
+    method: GET
+    headers:
+      Cache-Control: "no-cache"
+      Pragma: "no-cache"
+    expect:
+      status_codes: [200, 503]

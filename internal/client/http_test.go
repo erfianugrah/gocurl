@@ -11,10 +11,10 @@ import (
 
 func TestNewClient(t *testing.T) {
 	config := &Config{
-		Timeout:         30 * time.Second,
-		Insecure:        false,
-		MaxIdleConns:    100,
-		MaxIdlePerHost:  10,
+		Timeout:          30 * time.Second,
+		Insecure:         false,
+		MaxIdleConns:     100,
+		MaxIdlePerHost:   10,
 		DisableKeepAlive: false,
 	}
 

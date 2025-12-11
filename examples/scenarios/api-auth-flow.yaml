@@ -1,0 +1,82 @@
+name: "API Authentication Flow"
+description: "JWT authentication: login → refresh token → authenticated requests"
+
+config:
+  timeout: "30s"
+  insecure: false
+
+steps:
+  - name: "Health Check"
+    url: "https://httpbin.org/status/200"
+    method: GET
+    expect:
+      status_codes: [200, 503]
+
+  - name: "Login - Get Access Token"
+    url: "https://httpbin.org/json"
+    method: POST
+    headers:
+      Content-Type: "application/json"
+    body: '{"username": "test@example.com", "password": "secure_pass_123"}'
+    extract:
+      access_token: "slideshow.title"  # Simulated JWT token
+      refresh_token: "slideshow.author"
+      user_id: "slideshow.date"
+    expect:
+      status_codes: [200, 503]
+
+  - name: "Get User Profile (Authenticated)"
+    url: "https://httpbin.org/headers"
+    method: GET
+    headers:
+      Authorization: "Bearer ${access_token}"
+      X-User-ID: "${user_id}"
+    expect:
+      status_codes: [200, 503]
+
+  - name: "Update User Profile"
+    url: "https://httpbin.org/put"
+    method: PUT
+    headers:
+      Authorization: "Bearer ${access_token}"
+      Content-Type: "application/json"
+    body: '{"name": "Updated Name", "email": "newemail@example.com"}'
+    expect:
+      status_codes: [200, 204, 503]
+
+  - name: "List User Resources"
+    url: "https://httpbin.org/get?user_id=${user_id}&limit=50"
+    method: GET
+    headers:
+      Authorization: "Bearer ${access_token}"
+    expect:
+      status_codes: [200, 503]
+
+  - name: "Refresh Access Token"
+    url: "https://httpbin.org/post"
+    method: POST
+    headers:
+      Content-Type: "application/json"
+    body: '{"refresh_token": "${refresh_token}"}'
+    extract:
+      new_access_token: "slideshow.title"
+    expect:
+      status_codes: [200, 503]
+
+  - name: "Verify New Token Works"
+    url: "https://httpbin.org/headers"
+    method: GET
+    headers:
+      Authorization: "Bearer ${new_access_token}"
+    expect:
+      status_codes: [200, 503]
+
+  - name: "Logout"
+    url: "https://httpbin.org/post"
+    method: POST
+    headers:
+      Authorization: "Bearer ${new_access_token}"
+      Content-Type: "application/json"
+    body: '{"action": "logout"}'
+    expect:
+      status_codes: [200, 204, 503]

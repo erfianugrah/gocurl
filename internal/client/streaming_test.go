@@ -327,7 +327,7 @@ func TestDetectStalls(t *testing.T) {
 			name: "multiple stalls",
 			chunkTimings: []ChunkTiming{
 				{SequenceNumber: 0, Size: 100, ElapsedTime: Duration(100 * time.Millisecond)},
-				{SequenceNumber: 1, Size: 100, ElapsedTime: Duration(800 * time.Millisecond)},  // stall 1
+				{SequenceNumber: 1, Size: 100, ElapsedTime: Duration(800 * time.Millisecond)}, // stall 1
 				{SequenceNumber: 2, Size: 100, ElapsedTime: Duration(900 * time.Millisecond)},
 				{SequenceNumber: 3, Size: 100, ElapsedTime: Duration(2000 * time.Millisecond)}, // stall 2
 			},

@@ -9,6 +9,9 @@ import (
 
 // TimingBreakdown contains detailed timing information for an HTTP request
 type TimingBreakdown struct {
+	URL              string   `json:"url"`
+	EffectiveURL     string   `json:"effective_url,omitempty"`  // Final URL after redirects
+	RedirectCount    int      `json:"redirect_count,omitempty"` // Number of redirects followed
 	DNSLookup        Duration `json:"dns_lookup"`
 	TCPConnection    Duration `json:"tcp_connection"`
 	TLSHandshake     Duration `json:"tls_handshake"`
@@ -20,37 +23,38 @@ type TimingBreakdown struct {
 	ConnectionIdle   bool     `json:"connection_idle"`
 	IdleTime         Duration `json:"idle_time"`
 
-	StatusCode       int               `json:"status_code"`
-	ContentLength    int64             `json:"content_length"`
-	ResponseSize     int64             `json:"response_size"`
-	ResponseHeaders  map[string]string `json:"response_headers,omitempty"`
-	ResponseBody     string            `json:"response_body,omitempty"`
-	TLSVersion       string            `json:"tls_version,omitempty"`
-	TLSCipherSuite   string            `json:"tls_cipher_suite,omitempty"`
-	TLSServerName    string            `json:"tls_server_name,omitempty"`
-	Error            string            `json:"error,omitempty"`
+	StatusCode      int               `json:"status_code"`
+	ContentLength   int64             `json:"content_length"`
+	ResponseSize    int64             `json:"response_size"`
+	ContentRange    string            `json:"content_range,omitempty"` // Content-Range header value
+	ResponseHeaders map[string]string `json:"response_headers,omitempty"`
+	ResponseBody    string            `json:"response_body,omitempty"`
+	TLSVersion      string            `json:"tls_version,omitempty"`
+	TLSCipherSuite  string            `json:"tls_cipher_suite,omitempty"`
+	TLSServerName   string            `json:"tls_server_name,omitempty"`
+	Error           string            `json:"error,omitempty"`
 
 	// Streaming metrics (populated when --streaming flag is used)
-	Streaming        *StreamMetrics    `json:"streaming,omitempty"`
+	Streaming *StreamMetrics `json:"streaming,omitempty"`
 }
 
 // Tracer captures detailed timing information during HTTP request execution
 type Tracer struct {
-	mu           sync.Mutex
-	dnsStart     time.Time
-	dnsEnd       time.Time
-	connStart    time.Time
-	connEnd      time.Time
-	tlsStart     time.Time
-	tlsEnd       time.Time
-	reqStart     time.Time
-	respStart    time.Time
-	respEnd      time.Time
-	totalStart   time.Time
+	mu         sync.Mutex
+	dnsStart   time.Time
+	dnsEnd     time.Time
+	connStart  time.Time
+	connEnd    time.Time
+	tlsStart   time.Time
+	tlsEnd     time.Time
+	reqStart   time.Time
+	respStart  time.Time
+	respEnd    time.Time
+	totalStart time.Time
 
-	tlsState     *tls.ConnectionState
+	tlsState *tls.ConnectionState
 
-	timing       *TimingBreakdown
+	timing *TimingBreakdown
 }
 
 // NewTracer creates a new Tracer instance

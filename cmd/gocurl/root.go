@@ -9,29 +9,36 @@ import (
 )
 
 var (
-	outputFormat   string
-	noColor        bool
-	verbose        bool
-	quiet          bool
-	requests       int
-	concurrency    int
-	duration       string
-	headers        []string
-	method         string
-	data           string
-	timeout        string
-	insecure       bool
-	urlListFile    string
-	useStdin       bool
-	includeHeaders bool
-	showBody       bool
-	showErrorBody  bool
-	headRequest    bool
+	outputFormat    string
+	noColor         bool
+	verbose         bool
+	quiet           bool
+	requests        int
+	concurrency     int
+	headers         []string
+	method          string
+	data            string
+	timeout         string
+	insecure        bool
+	urlListFile     string
+	useStdin        bool
+	includeHeaders  bool
+	showBody        bool
+	showErrorBody   bool
+	headRequest     bool
 	enableStreaming bool
-	resolveHosts   []string
-	connectToHosts []string
+	resolveHosts    []string
+	connectToHosts  []string
 	expectStreaming bool
 	stallThreshold  string
+	queryParamsFile string
+	warmupRequests  int
+	rps             int
+	rampUp          string
+	exportCSV       string
+	captureHeaders  []string
+	rangeHeader     string
+	scenarioFile    string
 )
 
 var rootCmd = &cobra.Command{
@@ -48,6 +55,7 @@ TCP connection time, TLS handshake time, server processing time, and more.`,
   gocurl -o graph -n 100 -c 10 https://api.example.com
   gocurl -H "Authorization: Bearer token" https://api.example.com
   gocurl -L urls.txt -n 10 -c 5
+  gocurl -L urls.txt --query-params params.txt -n 10 -c 5
   cat urls.txt | gocurl -L - -n 10`,
 	Args: cobra.MaximumNArgs(1),
 	RunE: runHTTPTest,
@@ -63,7 +71,10 @@ func init() {
 	// HTTP flags
 	rootCmd.Flags().IntVarP(&requests, "requests", "n", 1, "Number of requests per URL")
 	rootCmd.Flags().IntVarP(&concurrency, "concurrency", "c", 1, "Concurrent workers")
-	rootCmd.Flags().StringVarP(&duration, "duration", "d", "", "Test duration (e.g., 30s, 5m)")
+	rootCmd.Flags().IntVar(&warmupRequests, "warmup", 0, "Number of warmup requests to skip from metrics (per URL)")
+	rootCmd.Flags().IntVar(&rps, "rps", 0, "Rate limit: requests per second (0 = unlimited)")
+	rootCmd.Flags().StringVar(&rampUp, "ramp-up", "", "Gradually increase concurrency over duration (e.g., '30s', '1m')")
+	rootCmd.Flags().StringVar(&exportCSV, "export-csv", "", "Export individual request data to CSV file")
 	rootCmd.Flags().StringArrayVarP(&headers, "header", "H", []string{}, "Custom headers (repeatable)")
 	rootCmd.Flags().StringVarP(&method, "method", "X", "GET", "HTTP method")
 	rootCmd.Flags().StringVar(&data, "data", "", "Request body")
@@ -71,12 +82,15 @@ func init() {
 	rootCmd.Flags().BoolVarP(&insecure, "insecure", "k", false, "Skip TLS verification")
 	rootCmd.Flags().StringVarP(&urlListFile, "url-list", "L", "", "File containing URLs (one per line), use '-' for stdin")
 	rootCmd.Flags().BoolVar(&useStdin, "stdin", false, "Read URLs from stdin")
+	rootCmd.Flags().StringVar(&queryParamsFile, "query-params", "", "File containing query parameters (one per line) to append to each URL")
 
 	// Response display flags
 	rootCmd.Flags().BoolVarP(&includeHeaders, "include", "i", false, "Include response headers in output")
 	rootCmd.Flags().BoolVarP(&headRequest, "head", "I", false, "Make HEAD request (show headers only)")
 	rootCmd.Flags().BoolVar(&showBody, "show-body", false, "Show response body in output")
 	rootCmd.Flags().BoolVar(&showErrorBody, "show-error", false, "Show response body for error responses (4xx, 5xx)")
+	rootCmd.Flags().StringArrayVar(&captureHeaders, "capture-header", []string{}, "Capture specific response headers (repeatable, e.g., --capture-header Cache-Control)")
+	rootCmd.Flags().StringVar(&rangeHeader, "range", "", "Request partial content (e.g., 'bytes=0-1023' or 'bytes=1024-')")
 
 	// Performance analysis flags
 	rootCmd.Flags().BoolVar(&enableStreaming, "streaming", false, "Enable detailed streaming metrics (chunk-level timing)")
@@ -86,11 +100,19 @@ func init() {
 	// Connection control flags
 	rootCmd.Flags().StringArrayVar(&resolveHosts, "resolve", []string{}, "Resolve host:port to address (format: host:port:addr)")
 	rootCmd.Flags().StringArrayVar(&connectToHosts, "connect-to", []string{}, "Connect to host:port instead (format: host1:port1:host2:port2)")
+
+	// Scenario testing flags
+	rootCmd.Flags().StringVarP(&scenarioFile, "scenario", "s", "", "Execute a multi-step scenario from YAML file")
 }
 
 func runHTTPTest(cmd *cobra.Command, args []string) error {
 	if noColor {
 		color.NoColor = true
+	}
+
+	// Handle scenario mode
+	if scenarioFile != "" {
+		return runScenario(scenarioFile)
 	}
 
 	// Handle HEAD request flag
@@ -133,6 +155,27 @@ func runHTTPTest(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("no URL provided (use a URL argument or -L flag)")
 	}
 
+	// Expand URLs with query parameters if provided
+	if queryParamsFile != "" {
+		queryParams, err := app.ReadQueryParamsFromFile(queryParamsFile)
+		if err != nil {
+			return fmt.Errorf("failed to read query params: %w", err)
+		}
+
+		if len(queryParams) > 0 {
+			urls = app.ExpandURLsWithQueryParams(urls, queryParams)
+			if !quiet {
+				fmt.Printf("Expanded %d base URL(s) × %d query param variant(s) = %d total URL(s)\n",
+					len(urls)/len(queryParams), len(queryParams), len(urls))
+			}
+		}
+	}
+
+	// Validate warmup requests
+	if warmupRequests >= requests && requests > 1 {
+		return fmt.Errorf("warmup requests (%d) must be less than total requests (%d)", warmupRequests, requests)
+	}
+
 	config := &app.Config{
 		URLs:            urls,
 		Method:          method,
@@ -140,7 +183,10 @@ func runHTTPTest(cmd *cobra.Command, args []string) error {
 		Data:            data,
 		Requests:        requests,
 		Concurrency:     concurrency,
-		Duration:        duration,
+		WarmupRequests:  warmupRequests,
+		RPS:             rps,
+		RampUp:          rampUp,
+		ExportCSV:       exportCSV,
 		Timeout:         timeout,
 		Insecure:        insecure,
 		OutputFormat:    outputFormat,
@@ -149,6 +195,8 @@ func runHTTPTest(cmd *cobra.Command, args []string) error {
 		IncludeHeaders:  includeHeaders,
 		ShowBody:        showBody,
 		ShowErrorBody:   showErrorBody,
+		CaptureHeaders:  captureHeaders,
+		RangeHeader:     rangeHeader,
 		EnableStreaming: enableStreaming,
 		ResolveHosts:    resolveHosts,
 		ConnectToHosts:  connectToHosts,
@@ -162,4 +210,19 @@ func runHTTPTest(cmd *cobra.Command, args []string) error {
 
 func Execute() error {
 	return rootCmd.Execute()
+}
+
+func runScenario(filename string) error {
+	scenario, err := app.LoadAndExecuteScenario(filename, insecure, timeout)
+	if err != nil {
+		return err
+	}
+
+	if !quiet {
+		fmt.Printf("✓ Scenario '%s' completed successfully\n", scenario.Name)
+		fmt.Printf("  Description: %s\n", scenario.Description)
+		fmt.Printf("  Steps executed: %d\n\n", len(scenario.Steps))
+	}
+
+	return nil
 }

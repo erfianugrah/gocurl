@@ -21,8 +21,8 @@ type HTTPClient interface {
 
 // Client wraps the standard HTTP client with performance measurement capabilities
 type Client struct {
-	client  *http.Client
-	config  *Config
+	client *http.Client
+	config *Config
 }
 
 // Config contains configuration for the HTTP client
@@ -35,6 +35,8 @@ type Config struct {
 	IncludeHeaders   bool
 	ShowBody         bool
 	ShowErrorBody    bool
+	CaptureHeaders   []string          // Specific headers to always capture
+	RangeHeader      string            // Range header for partial content requests
 	ResolveMap       map[string]string // "host:port" -> "ip"
 	ConnectToMap     map[string]string // "host:port" -> "newhost:newport"
 	StallThreshold   time.Duration     // Threshold for detecting stalls
@@ -94,6 +96,7 @@ func NewClient(config *Config) *Client {
 			Transport: transport,
 			Timeout:   config.Timeout,
 			CheckRedirect: func(req *http.Request, via []*http.Request) error {
+				// Allow up to 10 redirects (Go's default)
 				if len(via) >= 10 {
 					return http.ErrUseLastResponse
 				}
@@ -113,6 +116,9 @@ func (c *Client) Do(req *http.Request) (*http.Response, error) {
 func (c *Client) MeasureRequest(url, method string, headers map[string]string, body io.Reader) (*TimingBreakdown, error) {
 	tracer := NewTracer()
 
+	// Track original URL for redirect comparison
+	originalURL := url
+
 	// Create request
 	req, err := http.NewRequest(method, url, body)
 	if err != nil {
@@ -122,6 +128,11 @@ func (c *Client) MeasureRequest(url, method string, headers map[string]string, b
 	// Add custom headers
 	for key, value := range headers {
 		req.Header.Set(key, value)
+	}
+
+	// Add Range header if specified
+	if c.config.RangeHeader != "" {
+		req.Header.Set("Range", c.config.RangeHeader)
 	}
 
 	// Set default User-Agent if not provided
@@ -139,21 +150,39 @@ func (c *Client) MeasureRequest(url, method string, headers map[string]string, b
 	if err != nil {
 		tracer.End()
 		timing := tracer.Timing()
+		timing.URL = originalURL
 		timing.Error = err.Error()
 		return timing, err
 	}
 	defer resp.Body.Close()
 
-	// Capture response headers if requested
-	if c.config.IncludeHeaders {
+	// Capture response headers if requested or if specific headers need to be captured
+	shouldCaptureHeaders := c.config.IncludeHeaders || len(c.config.CaptureHeaders) > 0
+	if shouldCaptureHeaders {
 		timing := tracer.Timing()
 		timing.ResponseHeaders = make(map[string]string)
-		for key, values := range resp.Header {
-			// Join multiple values with comma (per HTTP spec)
-			timing.ResponseHeaders[key] = values[0]
-			if len(values) > 1 {
-				for i := 1; i < len(values); i++ {
-					timing.ResponseHeaders[key] += ", " + values[i]
+
+		// If IncludeHeaders is true, capture all headers
+		if c.config.IncludeHeaders {
+			for key, values := range resp.Header {
+				// Join multiple values with comma (per HTTP spec)
+				timing.ResponseHeaders[key] = values[0]
+				if len(values) > 1 {
+					for i := 1; i < len(values); i++ {
+						timing.ResponseHeaders[key] += ", " + values[i]
+					}
+				}
+			}
+		} else if len(c.config.CaptureHeaders) > 0 {
+			// Otherwise, capture only specified headers
+			for _, headerName := range c.config.CaptureHeaders {
+				if values := resp.Header.Values(headerName); len(values) > 0 {
+					timing.ResponseHeaders[headerName] = values[0]
+					if len(values) > 1 {
+						for i := 1; i < len(values); i++ {
+							timing.ResponseHeaders[headerName] += ", " + values[i]
+						}
+					}
 				}
 			}
 		}
@@ -178,9 +207,24 @@ func (c *Client) MeasureRequest(url, method string, headers map[string]string, b
 
 	// Populate response information
 	timing := tracer.Timing()
+	timing.URL = originalURL
 	timing.StatusCode = resp.StatusCode
 	timing.ContentLength = resp.ContentLength
 	timing.ResponseSize = written
+
+	// Track effective URL and redirect count
+	finalURL := resp.Request.URL.String()
+	if finalURL != originalURL {
+		timing.EffectiveURL = finalURL
+		// Estimate redirect count by comparing URLs
+		// Note: Go's HTTP client follows redirects automatically
+		timing.RedirectCount = 1 // We know at least one redirect occurred
+	}
+
+	// Capture Content-Range header for range requests
+	if contentRange := resp.Header.Get("Content-Range"); contentRange != "" {
+		timing.ContentRange = contentRange
+	}
 
 	if shouldCaptureBody && len(bodyBytes) > 0 {
 		timing.ResponseBody = string(bodyBytes)

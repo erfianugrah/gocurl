@@ -27,7 +27,7 @@ func TestCollectorRecord(t *testing.T) {
 	collector := NewCollector()
 
 	timing := &client.TimingBreakdown{
-		Total: client.Duration(100 * time.Millisecond),
+		Total:      client.Duration(100 * time.Millisecond),
 		StatusCode: 200,
 	}
 
@@ -71,7 +71,7 @@ func TestCollectorCalculateSingle(t *testing.T) {
 	collector := NewCollector()
 
 	timing := &client.TimingBreakdown{
-		Total: client.Duration(100 * time.Millisecond),
+		Total:        client.Duration(100 * time.Millisecond),
 		StatusCode:   200,
 		ResponseSize: 1024,
 	}
@@ -261,7 +261,7 @@ func TestCollectorReset(t *testing.T) {
 	collector := NewCollector()
 
 	timing := &client.TimingBreakdown{
-		Total: client.Duration(100 * time.Millisecond),
+		Total:      client.Duration(100 * time.Millisecond),
 		StatusCode: 200,
 	}
 
@@ -353,7 +353,7 @@ func TestCollectorThroughput(t *testing.T) {
 	// Add some requests
 	for i := 0; i < 10; i++ {
 		timing := &client.TimingBreakdown{
-			Total: client.Duration(100 * time.Millisecond),
+			Total:        client.Duration(100 * time.Millisecond),
 			StatusCode:   200,
 			ResponseSize: 1024,
 		}
