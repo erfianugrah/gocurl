@@ -9,6 +9,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/erfi/gocurl/internal/client"
@@ -245,16 +246,16 @@ func (a *App) runLoad() error {
 
 	if !a.config.Quiet {
 		if a.config.WarmupRequests > 0 {
-			fmt.Printf("Running load test: %d URLs x %d requests = %d total requests with concurrency %d\n",
+			fmt.Fprintf(os.Stderr, "Running load test: %d URLs x %d requests = %d total requests with concurrency %d\n",
 				len(a.config.URLs), a.config.Requests, totalRequests, a.config.Concurrency)
-			fmt.Printf("Warmup: %d requests per URL (%d total warmup) - not included in metrics\n",
+			fmt.Fprintf(os.Stderr, "Warmup: %d requests per URL (%d total warmup) - not included in metrics\n",
 				a.config.WarmupRequests, warmupTotal)
 		} else {
-			fmt.Printf("Running load test: %d URLs x %d requests = %d total requests with concurrency %d\n",
+			fmt.Fprintf(os.Stderr, "Running load test: %d URLs x %d requests = %d total requests with concurrency %d\n",
 				len(a.config.URLs), a.config.Requests, totalRequests, a.config.Concurrency)
 		}
 		if a.config.RPS > 0 {
-			fmt.Printf("Rate limit: %d requests/second\n", a.config.RPS)
+			fmt.Fprintf(os.Stderr, "Rate limit: %d requests/second\n", a.config.RPS)
 		}
 	}
 
@@ -283,7 +284,7 @@ func (a *App) runLoad() error {
 			return fmt.Errorf("invalid ramp-up duration: %w", err)
 		}
 		if !a.config.Quiet {
-			fmt.Printf("Ramp-up: gradually increasing from 1 to %d workers over %s\n", a.config.Concurrency, rampUpDuration)
+			fmt.Fprintf(os.Stderr, "Ramp-up: gradually increasing from 1 to %d workers over %s\n", a.config.Concurrency, rampUpDuration)
 		}
 	}
 
@@ -295,6 +296,30 @@ func (a *App) runLoad() error {
 		ticker := time.NewTicker(interval)
 		defer ticker.Stop()
 		rateLimiter = ticker.C
+	}
+
+	// Progress reporting
+	var completed int64
+	var progressDone chan struct{}
+	if !a.config.Quiet {
+		progressDone = make(chan struct{})
+		go func() {
+			ticker := time.NewTicker(500 * time.Millisecond)
+			defer ticker.Stop()
+
+			for {
+				select {
+				case <-ticker.C:
+					current := atomic.LoadInt64(&completed)
+					pct := float64(current) / float64(totalRequests) * 100
+					fmt.Fprintf(os.Stderr, "\rProgress: %d/%d requests (%.1f%%)", current, totalRequests, pct)
+				case <-progressDone:
+					// Final update
+					fmt.Fprintf(os.Stderr, "\rProgress: %d/%d requests (100.0%%)\n", totalRequests, totalRequests)
+					return
+				}
+			}
+		}()
 	}
 
 	// Start workers (with ramp-up if configured)
@@ -336,6 +361,9 @@ func (a *App) runLoad() error {
 					if timing != nil && !j.isWarmup {
 						a.collector.Record(timing)
 					}
+
+					// Update progress
+					atomic.AddInt64(&completed, 1)
 				}
 			}()
 		}
@@ -373,6 +401,9 @@ func (a *App) runLoad() error {
 					if timing != nil && !j.isWarmup {
 						a.collector.Record(timing)
 					}
+
+					// Update progress
+					atomic.AddInt64(&completed, 1)
 				}
 			}()
 		}
@@ -391,6 +422,13 @@ func (a *App) runLoad() error {
 
 	// Wait for all workers to complete
 	wg.Wait()
+
+	// Stop progress reporting
+	if !a.config.Quiet {
+		close(progressDone)
+		time.Sleep(100 * time.Millisecond) // Give progress goroutine time to print final message
+	}
+
 	a.collector.Finalize()
 
 	// Calculate and display statistics
