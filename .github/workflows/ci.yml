@@ -41,7 +41,11 @@ jobs:
     - name: Build
       run: |
         mkdir -p build
-        go build -v -ldflags "-s -w" -o build/${{ matrix.output }} ./cmd/gocurl
+        VERSION=$(git describe --tags --always --dirty 2>/dev/null || echo "dev")
+        COMMIT=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
+        BUILD_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+        LDFLAGS="-s -w -X main.version=${VERSION} -X main.commit=${COMMIT} -X main.date=${BUILD_DATE}"
+        go build -v -ldflags "${LDFLAGS}" -o build/${{ matrix.output }} ./cmd/gocurl
       env:
         CGO_ENABLED: 0
         GOOS: ${{ matrix.GOOS }}

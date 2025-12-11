@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"os"
 
 	"github.com/erfi/gocurl/internal/app"
 	"github.com/fatih/color"
@@ -42,13 +43,16 @@ var (
 )
 
 var rootCmd = &cobra.Command{
-	Use:   "gocurl [flags] [url]",
-	Short: "A Go-based performance measurement CLI tool that extends curl functionality",
-	Long: `gocurl is a production-grade performance measurement tool that provides
+	Use:     "gocurl [flags] [url]",
+	Short:   "A Go-based performance measurement CLI tool that extends curl functionality",
+	Version: version,
+	Long: fmt.Sprintf(`%s
+
+gocurl is a production-grade performance measurement tool that provides
 rich metrics, multiple output formats, and load testing capabilities.
 
 It measures detailed HTTP performance metrics including DNS lookup time,
-TCP connection time, TLS handshake time, server processing time, and more.`,
+TCP connection time, TLS handshake time, server processing time, and more.`, GetVersionInfo()),
 	Example: `  gocurl https://api.example.com
   gocurl -n 100 -c 10 https://api.example.com
   gocurl -o json https://api.example.com
@@ -62,6 +66,9 @@ TCP connection time, TLS handshake time, server processing time, and more.`,
 }
 
 func init() {
+	// Set custom version template for detailed output
+	rootCmd.SetVersionTemplate(GetVersionDetails() + "\n")
+
 	// Global flags
 	rootCmd.PersistentFlags().StringVarP(&outputFormat, "output", "o", "table", "Output format: table|json|prom|graph")
 	rootCmd.PersistentFlags().BoolVar(&noColor, "no-color", false, "Disable colored output")
@@ -108,6 +115,11 @@ func init() {
 func runHTTPTest(cmd *cobra.Command, args []string) error {
 	if noColor {
 		color.NoColor = true
+	}
+
+	// Show version in verbose mode (but not quiet mode)
+	if verbose && !quiet {
+		fmt.Fprintf(os.Stderr, "%s\n\n", GetVersionInfo())
 	}
 
 	// Handle scenario mode
@@ -202,6 +214,11 @@ func runHTTPTest(cmd *cobra.Command, args []string) error {
 		ConnectToHosts:  connectToHosts,
 		ExpectStreaming: expectStreaming,
 		StallThreshold:  stallThreshold,
+
+		// Version information
+		Version:   version,
+		Commit:    commit,
+		BuildDate: date,
 	}
 
 	application := app.New(config)

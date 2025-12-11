@@ -16,10 +16,10 @@ type Formatter interface {
 }
 
 // GetFormatter returns the appropriate formatter based on the format string
-func GetFormatter(format string, verbose bool) (Formatter, error) {
+func GetFormatter(format string, verbose bool, version, commit, buildDate string) (Formatter, error) {
 	switch format {
 	case "json":
-		return NewJSONFormatter(verbose), nil
+		return NewJSONFormatter(verbose, version, commit, buildDate), nil
 	case "table":
 		return NewTableFormatter(verbose), nil
 	case "graph":

@@ -44,6 +44,11 @@ type Config struct {
 	ConnectToHosts  []string
 	ExpectStreaming bool
 	StallThreshold  string
+
+	// Version information (for output metadata)
+	Version   string
+	Commit    string
+	BuildDate string
 }
 
 // App represents the main application
@@ -114,7 +119,7 @@ func New(config *Config) *App {
 
 	httpClient := client.NewClient(clientConfig)
 	collector := metrics.NewCollector()
-	formatter, _ := output.GetFormatter(config.OutputFormat, config.Verbose)
+	formatter, _ := output.GetFormatter(config.OutputFormat, config.Verbose, config.Version, config.Commit, config.BuildDate)
 
 	return &App{
 		config:    config,
