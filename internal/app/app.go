@@ -132,7 +132,9 @@ func New(config *Config) *App {
 
 // Run executes the application
 func (a *App) Run() error {
-	if a.config.Requests == 1 {
+	// Use runSingle only for a single URL with a single request
+	// For multiple URLs, always use runLoad even with -n 1
+	if a.config.Requests == 1 && len(a.config.URLs) == 1 {
 		return a.runSingle()
 	}
 	return a.runLoad()
