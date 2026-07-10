@@ -35,7 +35,7 @@
 
 - 🚀 **Detailed Performance Metrics** - DNS, TCP, TLS, server processing, and content transfer timing
 - 🎨 **Waterfall Timeline** - Chrome DevTools-style visual timeline showing request phases
-- 📊 **Multiple Output Formats** - Table, JSON, or ASCII graphs with histograms
+- 📊 **Multiple Output Formats** - Table, JSON, ASCII graphs, or Prometheus metrics
 - ⚡ **Load Testing** - Concurrent requests with configurable workers
 - 🎯 **URL Parameterization** - Test query parameter variants (e.g., different image sizes)
 - 🔥 **Warmup Phase** - Exclude initial requests from metrics to eliminate cold-start effects
@@ -166,6 +166,24 @@ Latency Distribution:
        80-90ms │████████████████████ 45 (45.0%)
      290-300ms │████████ 18 (18.0%)
 ```
+
+#### Prometheus Format
+```bash
+gocurl -o prom -n 100 -c 10 https://api.example.com
+```
+Prometheus text-exposition output for the node_exporter textfile collector or a
+Pushgateway. **Durations are in seconds** here (Prometheus base-unit convention),
+unlike the millisecond-based table/json/csv formats:
+```
+gocurl_requests_total 100
+gocurl_requests_failed_total 0
+gocurl_request_duration_seconds{quantile="0.5"} 0.030
+gocurl_request_duration_seconds{quantile="0.95"} 0.148
+gocurl_requests_per_second 419.7
+gocurl_responses_total{status="200"} 100
+```
+A single request (`-n 1`) instead emits per-phase gauges
+(`gocurl_request_phase_seconds{phase="dns|tcp|tls|server|transfer"}`).
 
 ### Load Testing
 
@@ -548,11 +566,14 @@ gocurl --no-color https://api.example.com
 
 ## Command Reference
 
+> For the full flag matrix, flag-combination rules, output-format details, and
+> report/CI/automation recipes, see [docs/USAGE.md](docs/USAGE.md).
+
 ### Global Flags
 
 | Flag | Short | Description | Default |
 |------|-------|-------------|---------|
-| `--output` | `-o` | Output format: table, json, graph | `table` |
+| `--output` | `-o` | Output format: table, json, graph, prom | `table` |
 | `--no-color` | | Disable colored output | `false` |
 | `--verbose` | `-v` | Verbose output | `false` |
 | `--quiet` | `-q` | Minimal output (errors only) | `false` |
@@ -568,6 +589,7 @@ gocurl --no-color https://api.example.com
 | `--ramp-up` | | Gradually increase concurrency over duration (e.g., '30s', '1m') | |
 | `--export-csv` | | Export individual request data to CSV file | |
 | `--url-list` | `-L` | File with URLs (use '-' for stdin) | |
+| `--stdin` | | Read URLs from stdin (equivalent to `-L -`) | `false` |
 | `--query-params` | | File with query parameters (one per line) to append to each URL | |
 | `--method` | `-X` | HTTP method | `GET` |
 | `--header` | `-H` | Custom header (repeatable) | |

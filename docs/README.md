@@ -6,6 +6,9 @@ Internal documentation for gocurl architecture and design.
 
 See the main documentation:
 - [**Main README**](../README.md) - Complete user guide with all features
+- [**USAGE.md**](USAGE.md) - Authoritative reference: full flag matrix, combination
+  rules, output formats, reports, and CI/automation recipes
+- [**../CHANGELOG.md**](../CHANGELOG.md) - Release history
 
 ## For Developers
 

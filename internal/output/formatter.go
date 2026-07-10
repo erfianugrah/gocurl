@@ -24,6 +24,8 @@ func GetFormatter(format string, verbose bool, version, commit, buildDate string
 		return NewTableFormatter(verbose), nil
 	case "graph":
 		return NewGraphFormatter(verbose), nil
+	case "prom", "prometheus":
+		return NewPromFormatter(verbose), nil
 	default:
 		return NewTableFormatter(verbose), nil
 	}

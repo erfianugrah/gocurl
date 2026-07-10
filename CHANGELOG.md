@@ -4,6 +4,26 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project adheres
 to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v1.5.0]
+
+Prometheus output format and a consolidated usage/automation reference.
+
+### Added
+
+- **Prometheus output format (`-o prom`).** Previously advertised in `--help` but
+  unimplemented (it silently rendered a table). Now a real text-exposition
+  formatter: aggregate load metrics as counters + a latency `summary`
+  (`gocurl_request_duration_seconds` with quantiles, `_sum`, `_count`), plus
+  `gocurl_requests_total`, `gocurl_error_rate`, `gocurl_requests_per_second`,
+  `gocurl_responses_total{status}`, etc. A single request emits per-phase gauges
+  (`gocurl_request_phase_seconds{phase=...}`). Durations are in **seconds**
+  (Prometheus base-unit convention). Suitable for the node_exporter textfile
+  collector or a Pushgateway.
+- **`docs/USAGE.md`** - authoritative reference: full flag matrix, mode-selection
+  rules, flag-combination gotchas, output-format/units guide, report generation
+  (CSV / Prometheus textfile / JSON), and CI/automation recipes.
+- Documented the `--stdin` flag (alias for `-L -`).
+
 ## [v1.4.0]
 
 Correctness, accuracy, and honesty pass. Several long-standing behaviors that did
