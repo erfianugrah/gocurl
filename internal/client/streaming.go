@@ -184,12 +184,14 @@ func (c *Client) MeasureRequestWithStreaming(ctx context.Context, url, method st
 	req = req.WithContext(traceCtx)
 
 	// Execute request
+	startWall := time.Now()
 	tracer.Start()
 	resp, err := c.client.Do(req)
 	if err != nil {
 		tracer.End()
 		timing := tracer.Timing()
 		timing.URL = url
+		timing.StartTime = startWall
 		timing.Error = err.Error()
 		return timing, nil, err
 	}
@@ -220,6 +222,7 @@ func (c *Client) MeasureRequestWithStreaming(ctx context.Context, url, method st
 	streamMetrics := streamReader.Metrics()
 	timing := tracer.Timing()
 	timing.URL = url
+	timing.StartTime = startWall
 	timing.StatusCode = resp.StatusCode
 	timing.ContentLength = resp.ContentLength
 	timing.ResponseSize = streamMetrics.TotalBytes

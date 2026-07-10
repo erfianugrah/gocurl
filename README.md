@@ -96,7 +96,7 @@ sudo mv gocurl /usr/local/bin/
 
 ### Requirements
 
-- **Go 1.21 or later** (for building from source)
+- **Go 1.24 or later** (for building from source)
 - No external runtime dependencies
 
 ## Usage
@@ -139,15 +139,17 @@ Beautiful terminal output with waterfall timeline visualization.
 ```bash
 gocurl -o json https://api.example.com
 ```
-Machine-readable output for CI/CD integration (values in milliseconds):
+Machine-readable output for CI/CD integration. Timing values are in
+milliseconds, encoded as fractional numbers so sub-millisecond phases are not
+lost (whole values still encode without a decimal point):
 ```json
 {
-  "dns_lookup": 12,
-  "tcp_connection": 45,
-  "tls_handshake": 156,
+  "dns_lookup": 12.4,
+  "tcp_connection": 45.1,
+  "tls_handshake": 156.2,
   "server_processing": 32,
-  "content_transfer": 0,
-  "total": 245,
+  "content_transfer": 1.8,
+  "total": 245.3,
   "status_code": 200,
   "tls_version": "TLS 1.3",
   "tls_cipher_suite": "TLS_AES_128_GCM_SHA256"
@@ -619,9 +621,10 @@ done
 # Fail build if p95 > 500ms
 #!/bin/bash
 RESULT=$(gocurl -n 100 -c 10 -o json https://api.example.com)
-P95=$(echo $RESULT | jq '.p95')
+P95=$(echo "$RESULT" | jq '.p95')
 
-if [ "$P95" -gt 500 ]; then
+# p95 is milliseconds and may be fractional, so compare numerically with jq
+if echo "$RESULT" | jq -e '.p95 > 500' >/dev/null; then
   echo "FAIL: P95 latency ${P95}ms exceeds 500ms threshold"
   exit 1
 fi
@@ -745,23 +748,23 @@ This tests:
 ✓ Status: 200 OK
 ✓ Time: 245ms
 
-┌───────────────────────────────────────────────────────────────┐
-│ Performance Breakdown                                         │
-├───────────────────┬──────────┬────────────┬───────────────────┤
-│ METRIC            │ DURATION │ PERCENTAGE │ ASSESSMENT        │
-├───────────────────┼──────────┼────────────┼───────────────────┤
-│ DNS Lookup        │ 12ms     │ 4.9%       │ Excellent         │
-│ TCP Connection    │ 45ms     │ 18.4%      │ Good              │
-│ TLS Handshake     │ 156ms    │ 63.7%      │ Good              │
-│ Server Processing │ 32ms     │ 13.1%      │ Fast              │
-├───────────────────┼──────────┼────────────┼───────────────────┤
-│ Total             │ 245ms    │ 100%       │ Excellent         │
-└───────────────────┴──────────┴────────────┴───────────────────┘
+┌───────────────────────────────────────────┐
+│ Timing Breakdown                            │
+├───────────────────┬──────────┬──────────────┤
+│ PHASE             │ DURATION │ % OF TOTAL   │
+├───────────────────┼──────────┼──────────────┤
+│ DNS Lookup        │ 12ms     │ 4.9%         │
+│ TCP Connection    │ 45ms     │ 18.4%        │
+│ TLS Handshake     │ 156ms    │ 63.7%        │
+│ Server Processing │ 32ms     │ 13.1%        │
+├───────────────────┼──────────┼──────────────┤
+│ Total             │ 245ms    │ 100%         │
+└───────────────────┴──────────┴──────────────┘
 ```
 
 ### Load Test Results (Table)
 ```
-Running load test: 100 requests with concurrency 10
+Running load test: 1 URLs x 100 requests = 100 total requests with concurrency 10
 
 === Load Test Results ===
 Total Requests: 100
@@ -921,7 +924,6 @@ gocurl -v https://api.example.com
 | JSON output | ❌ | ✅ | ✅ | ❌ |
 | CSV export | ❌ | ✅ | ❌ | ❌ |
 | Color output | ❌ | ✅ | ✅ | ❌ |
-| Performance assessments | ❌ | ✅ | ❌ | ❌ |
 | Streaming analysis | ❌ | ✅ | ❌ | ❌ |
 | Buffering detection | ❌ | ✅ | ❌ | ❌ |
 | DNS/Connection override | ✅ | ✅ | ❌ | ❌ |
@@ -944,7 +946,10 @@ A: gocurl uses Go's standard HTTP client which supports HTTP/2 automatically.
 A: Use the `-k` flag to skip verification, but this should only be used in testing environments.
 
 **Q: How accurate are the timing measurements?**
-A: Very accurate. gocurl uses Go's `httptrace` package which provides microsecond-precision timing for each phase of the request.
+A: gocurl uses Go's `httptrace` package to time each phase from monotonic-clock
+readings. Table output shows sub-millisecond values (e.g. `0.42ms`) and JSON/CSV
+preserve fractional milliseconds, so DNS/TCP/TLS on fast paths are not rounded to
+zero. Measurements are client-side and include local scheduling and socket overhead.
 
 ## CI/CD
 
@@ -1008,6 +1013,7 @@ Inspired by tools like curl, httpstat, hey, and vegeta.
 ## Support
 
 - 📖 [Full Documentation](docs/)
+- 📝 [Changelog](CHANGELOG.md)
 - 🐛 [Report Issues](https://github.com/erfianugrah/gocurl/issues)
 - 💬 [Discussions](https://github.com/erfianugrah/gocurl/discussions)
 

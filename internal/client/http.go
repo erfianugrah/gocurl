@@ -19,6 +19,10 @@ type HTTPClient interface {
 	Do(*http.Request) (*http.Response, error)
 }
 
+// redirectCounterKey is the context key under which a per-request redirect
+// counter (*int) is stored so CheckRedirect can record the true hop count.
+type redirectCounterKey struct{}
+
 // Client wraps the standard HTTP client with performance measurement capabilities
 type Client struct {
 	client *http.Client
@@ -88,14 +92,22 @@ func NewClient(config *Config) *Client {
 		}
 	}
 
-	// Enable HTTP/2 support
-	http2.ConfigureTransport(transport)
+	// Enable HTTP/2 support. The error is only non-nil if the transport was
+	// already configured for HTTP/2, which cannot happen here, so it is safe
+	// to ignore.
+	_ = http2.ConfigureTransport(transport)
 
 	return &Client{
 		client: &http.Client{
 			Transport: transport,
 			Timeout:   config.Timeout,
 			CheckRedirect: func(req *http.Request, via []*http.Request) error {
+				// Record the true redirect count. CheckRedirect is invoked once
+				// per redirect that is about to be followed; len(via) is the
+				// number of requests already made, i.e. the redirect depth.
+				if ctr, ok := req.Context().Value(redirectCounterKey{}).(*int); ok {
+					*ctr = len(via)
+				}
 				// Allow up to 10 redirects (Go's default)
 				if len(via) >= 10 {
 					return http.ErrUseLastResponse
@@ -112,15 +124,22 @@ func (c *Client) Do(req *http.Request) (*http.Response, error) {
 	return c.client.Do(req)
 }
 
-// MeasureRequest executes a single HTTP request and captures detailed timing information
+// MeasureRequest executes a single HTTP request and captures detailed timing
+// information using a background context (no external cancellation).
 func (c *Client) MeasureRequest(url, method string, headers map[string]string, body io.Reader) (*TimingBreakdown, error) {
+	return c.MeasureRequestContext(context.Background(), url, method, headers, body)
+}
+
+// MeasureRequestContext is like MeasureRequest but honors the supplied context,
+// allowing the request to be cancelled (e.g. on SIGINT during a load test).
+func (c *Client) MeasureRequestContext(ctx context.Context, url, method string, headers map[string]string, body io.Reader) (*TimingBreakdown, error) {
 	tracer := NewTracer()
 
 	// Track original URL for redirect comparison
 	originalURL := url
 
-	// Create request
-	req, err := http.NewRequest(method, url, body)
+	// Create request bound to the caller's context
+	req, err := http.NewRequestWithContext(ctx, method, url, body)
 	if err != nil {
 		return nil, err
 	}
@@ -140,17 +159,22 @@ func (c *Client) MeasureRequest(url, method string, headers map[string]string, b
 		req.Header.Set("User-Agent", "gocurl/1.0")
 	}
 
-	// Attach the tracer to the request context
-	ctx := httptrace.WithClientTrace(req.Context(), tracer.ClientTrace())
-	req = req.WithContext(ctx)
+	// Attach a redirect counter and the tracer to the request context
+	var redirects int
+	traceCtx := context.WithValue(req.Context(), redirectCounterKey{}, &redirects)
+	traceCtx = httptrace.WithClientTrace(traceCtx, tracer.ClientTrace())
+	req = req.WithContext(traceCtx)
 
 	// Start timing and execute request
+	startWall := time.Now()
 	tracer.Start()
 	resp, err := c.client.Do(req)
 	if err != nil {
 		tracer.End()
 		timing := tracer.Timing()
 		timing.URL = originalURL
+		timing.StartTime = startWall
+		timing.RedirectCount = redirects
 		timing.Error = err.Error()
 		return timing, err
 	}
@@ -208,17 +232,15 @@ func (c *Client) MeasureRequest(url, method string, headers map[string]string, b
 	// Populate response information
 	timing := tracer.Timing()
 	timing.URL = originalURL
+	timing.StartTime = startWall
 	timing.StatusCode = resp.StatusCode
 	timing.ContentLength = resp.ContentLength
 	timing.ResponseSize = written
 
-	// Track effective URL and redirect count
-	finalURL := resp.Request.URL.String()
-	if finalURL != originalURL {
+	// Track effective URL and the true redirect count captured in CheckRedirect
+	timing.RedirectCount = redirects
+	if finalURL := resp.Request.URL.String(); finalURL != originalURL {
 		timing.EffectiveURL = finalURL
-		// Estimate redirect count by comparing URLs
-		// Note: Go's HTTP client follows redirects automatically
-		timing.RedirectCount = 1 // We know at least one redirect occurred
 	}
 
 	// Capture Content-Range header for range requests

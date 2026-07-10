@@ -91,12 +91,13 @@ gocurl -L urls.txt -n 10 -c 5
 # "Running load test: 3 URLs x 10 requests = 30 total requests with concurrency 5"
 ```
 
-### 7. Signal Handling (Infrastructure Ready)
+### 7. Signal Handling
 Graceful shutdown handling for SIGINT/SIGTERM signals.
 
-- Ctrl+C during long tests triggers graceful shutdown
-- 5-second timeout before forced exit
-- Signal handling infrastructure in place at `internal/app/signals.go`
+- Ctrl+C (SIGINT) or SIGTERM during a load test cancels in-flight requests
+- Statistics for already-completed requests are still reported
+- The process exits non-zero (interrupted) after reporting
+- Implemented via `signal.NotifyContext`, threaded through the request context
 
 ## Usage Examples
 
@@ -716,14 +717,14 @@ Failed: 0
 | URL List | ✅ | ✅ | Both support files and stdin |
 | Histograms | ✅ | ✅ | gocurl uses 10ms buckets |
 | p99.9/p99.99 | ✅ | ✅ | gocurl conditional on sample size |
-| Signal Handling | ✅ | ✅ | Infrastructure in place |
+| Signal Handling | ✅ | ✅ | Cancels in-flight requests, reports partial stats |
 | ASCII Graphs | ✅ | ✅ | gocurl has horizontal bars |
 | Response Headers | ✅ | ✅ | gocurl has selective capture |
 | Range Requests | ✅ | ✅ | Both support byte-ranges |
 | Scenario Testing | ❌ | ✅ | Multi-step workflows |
 | Cobra CLI | ❌ | ✅ | Better flag handling |
 | Table Output | ❌ | ✅ | Beautiful formatted tables |
-| Color Coding | ❌ | ✅ | Performance assessments |
+| Color Coding | ❌ | ✅ | Status/latency color coding |
 | JSON Output | ✅ | ✅ | Both support JSON |
 
 ## Migration from go-perf-tester
@@ -740,4 +741,4 @@ Key differences:
 - gocurl uses `-o graph` instead of `-graphs` flag
 - gocurl provides multiple output formats (table/json/graph)
 - gocurl uses Cobra for better help/completion
-- gocurl has colored assessments in table mode
+- gocurl uses color coding for status codes and latency in table mode

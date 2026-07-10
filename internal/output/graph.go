@@ -3,9 +3,7 @@ package output
 import (
 	"fmt"
 	"io"
-	"math"
 	"strings"
-	"time"
 
 	"github.com/erfi/gocurl/internal/client"
 	"github.com/erfi/gocurl/internal/metrics"
@@ -164,87 +162,4 @@ func (f *GraphFormatter) createBar(value, maxWidth int) string {
 		value = maxWidth
 	}
 	return color.GreenString(strings.Repeat("█", value))
-}
-
-// drawLatencyGraph creates a simple line graph of latencies
-func (f *GraphFormatter) drawLatencyGraph(w io.Writer, latencies []time.Duration) {
-	if len(latencies) == 0 {
-		return
-	}
-
-	// Sample data if too many points
-	sampleSize := 50
-	sampled := latencies
-	if len(latencies) > sampleSize {
-		step := len(latencies) / sampleSize
-		sampled = make([]time.Duration, 0, sampleSize)
-		for i := 0; i < len(latencies); i += step {
-			sampled = append(sampled, latencies[i])
-		}
-	}
-
-	// Convert to float64 milliseconds
-	data := make([]float64, len(sampled))
-	for i, d := range sampled {
-		data[i] = float64(d.Milliseconds())
-	}
-
-	// Find min and max
-	min, max := data[0], data[0]
-	for _, v := range data {
-		if v < min {
-			min = v
-		}
-		if v > max {
-			max = v
-		}
-	}
-
-	// Simple ASCII plot (height = 10 lines)
-	height := 10
-	width := len(data)
-
-	// Normalize data to height
-	normalized := make([]int, len(data))
-	for i, v := range data {
-		if max > min {
-			normalized[i] = int(float64(height-1) * (v - min) / (max - min))
-		}
-	}
-
-	// Draw the graph
-	for row := height - 1; row >= 0; row-- {
-		line := ""
-		for col := 0; col < width; col++ {
-			if normalized[col] == row {
-				line += "•"
-			} else if normalized[col] > row {
-				line += "│"
-			} else {
-				line += " "
-			}
-		}
-
-		// Add y-axis label
-		value := min + (max-min)*float64(row)/float64(height-1)
-		fmt.Fprintf(w, "%8.1fms │%s\n", value, line)
-	}
-
-	// X-axis
-	fmt.Fprintf(w, "          └%s\n", strings.Repeat("─", width))
-	fmt.Fprintf(w, "           %s → %s\n", "Request 1", fmt.Sprintf("Request %d", len(latencies)))
-}
-
-// createHistogramBuckets creates histogram buckets from latency data
-func createHistogramBuckets(latencies []time.Duration) map[int]int {
-	histogram := make(map[int]int)
-
-	for _, latency := range latencies {
-		ms := latency.Milliseconds()
-		// Use logarithmic buckets for better distribution
-		bucket := int(math.Log10(float64(ms+1)) * 10)
-		histogram[bucket]++
-	}
-
-	return histogram
 }

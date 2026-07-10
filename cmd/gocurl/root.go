@@ -177,7 +177,9 @@ func runHTTPTest(cmd *cobra.Command, args []string) error {
 		if len(queryParams) > 0 {
 			urls = app.ExpandURLsWithQueryParams(urls, queryParams)
 			if !quiet {
-				fmt.Printf("Expanded %d base URL(s) × %d query param variant(s) = %d total URL(s)\n",
+				// Notices go to stderr so stdout stays a clean data channel
+				// (e.g. `-o json | jq`).
+				fmt.Fprintf(os.Stderr, "Expanded %d base URL(s) x %d query param variant(s) = %d total URL(s)\n",
 					len(urls)/len(queryParams), len(queryParams), len(urls))
 			}
 		}

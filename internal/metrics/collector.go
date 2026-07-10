@@ -55,17 +55,39 @@ func (c *Collector) Calculate() *Stats {
 	var totalLatency time.Duration
 	var totalBytes int64
 
+	// Track the wall-clock window spanning the recorded requests so throughput
+	// reflects only the time real (non-warmup) requests were in flight - not
+	// setup, ramp-up dead time, or warmup requests (which are never recorded).
+	var minStart, maxEnd time.Time
+
 	for _, t := range c.timings {
 		latency := time.Duration(t.Total)
 		latencies = append(latencies, latency)
 		totalLatency += latency
 		totalBytes += t.ResponseSize
 
-		if t.Error == "" {
-			stats.SuccessfulRequests++
-			stats.StatusCodes[t.StatusCode]++
-		} else {
+		if !t.StartTime.IsZero() {
+			end := t.StartTime.Add(latency)
+			if minStart.IsZero() || t.StartTime.Before(minStart) {
+				minStart = t.StartTime
+			}
+			if maxEnd.IsZero() || end.After(maxEnd) {
+				maxEnd = end
+			}
+		}
+
+		// A request is successful only if it completed without a transport
+		// error AND returned a non-error HTTP status (< 400). 4xx/5xx are
+		// counted as failures so error_rate reflects HTTP errors too.
+		if t.Error != "" {
 			stats.FailedRequests++
+		} else {
+			stats.StatusCodes[t.StatusCode]++
+			if t.StatusCode >= 400 {
+				stats.FailedRequests++
+			} else {
+				stats.SuccessfulRequests++
+			}
 		}
 	}
 
@@ -96,8 +118,13 @@ func (c *Collector) Calculate() *Stats {
 	// Create histogram
 	stats.Histogram = createHistogram(latencies)
 
-	// Calculate throughput
+	// Calculate throughput over the actual request window when per-request
+	// timestamps are available; otherwise fall back to the collector's
+	// create-to-finalize wall clock.
 	duration := c.endTime.Sub(c.startTime)
+	if !minStart.IsZero() && maxEnd.After(minStart) {
+		duration = maxEnd.Sub(minStart)
+	}
 	stats.Duration = Duration(duration)
 	stats.RequestsPerSecond = float64(stats.TotalRequests) / duration.Seconds()
 	stats.ErrorRate = float64(stats.FailedRequests) / float64(stats.TotalRequests)

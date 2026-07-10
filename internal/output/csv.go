@@ -42,8 +42,13 @@ func ExportCSV(filename string, timings []*client.TimingBreakdown) error {
 
 	// Write each timing as a row
 	for _, timing := range timings {
+		// Use the per-request start time; fall back to now only if unset.
+		ts := timing.StartTime
+		if ts.IsZero() {
+			ts = time.Now()
+		}
 		row := []string{
-			time.Now().Format(time.RFC3339),
+			ts.Format(time.RFC3339Nano),
 			timing.URL,
 			fmt.Sprintf("%d", timing.StatusCode),
 			fmt.Sprintf("%.2f", timing.DNSLookup.Seconds()*1000),

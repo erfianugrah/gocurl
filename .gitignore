@@ -38,4 +38,10 @@ coverage.html
 
 # Temporary files
 *.log
+
+# Local ad-hoc test artifacts (root-level scratch data / report exports)
+/video-urls.txt
+/query-params.txt
+/*-report.json
+/*-results.csv
 tmp/

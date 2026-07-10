@@ -36,6 +36,11 @@ type TimingBreakdown struct {
 
 	// Streaming metrics (populated when --streaming flag is used)
 	Streaming *StreamMetrics `json:"streaming,omitempty"`
+
+	// StartTime is the wall-clock time at which the request began. It is not
+	// serialized; it is used to compute an accurate throughput window and
+	// per-request CSV timestamps. Zero if the request never started.
+	StartTime time.Time `json:"-"`
 }
 
 // Tracer captures detailed timing information during HTTP request execution

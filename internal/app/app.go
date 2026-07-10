@@ -7,9 +7,11 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"os/signal"
 	"strings"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"time"
 
 	"github.com/erfi/gocurl/internal/client"
@@ -154,6 +156,10 @@ func (a *App) runSingle() error {
 		body = strings.NewReader(a.config.Data)
 	}
 
+	// Cancel the in-flight request on SIGINT/SIGTERM.
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
 	var timing *client.TimingBreakdown
 	var streamMetrics *client.StreamMetrics
 	var err error
@@ -161,7 +167,7 @@ func (a *App) runSingle() error {
 	// Use streaming measurement if enabled
 	if a.config.EnableStreaming {
 		timing, streamMetrics, err = a.client.MeasureRequestWithStreaming(
-			context.Background(),
+			ctx,
 			url,
 			a.config.Method,
 			headers,
@@ -172,7 +178,8 @@ func (a *App) runSingle() error {
 			timing.Streaming = streamMetrics
 		}
 	} else {
-		timing, err = a.client.MeasureRequest(
+		timing, err = a.client.MeasureRequestContext(
+			ctx,
 			url,
 			a.config.Method,
 			headers,
@@ -228,7 +235,7 @@ func (a *App) validateStreaming(metrics *client.StreamMetrics) error {
 
 	// Success - streaming detected
 	if !a.config.Quiet {
-		fmt.Fprintf(os.Stdout, "\n✓ Streaming validation passed (pattern: %s, CV: %.2f, %d chunks)\n",
+		fmt.Fprintf(os.Stderr, "\n✓ Streaming validation passed (pattern: %s, CV: %.2f, %d chunks)\n",
 			metrics.BufferingAnalysis.ChunkPattern,
 			metrics.BufferingAnalysis.ChunkTimingCV,
 			metrics.TotalChunks)
@@ -242,6 +249,17 @@ func (a *App) runLoad() error {
 	if len(a.config.URLs) == 0 {
 		return fmt.Errorf("no URLs provided")
 	}
+
+	// Streaming analysis is a single-request deep inspection. Silently ignoring
+	// it under load previously let --expect-streaming exit 0 (a false pass) in
+	// CI. Reject the combination explicitly instead.
+	if a.config.EnableStreaming {
+		return fmt.Errorf("--streaming/--expect-streaming is only supported for a single request (one URL with -n 1); it is not available in load-test mode")
+	}
+
+	// Cancel in-flight work on SIGINT/SIGTERM and report partial results.
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
 
 	totalRequests := a.config.Requests * len(a.config.URLs)
 	warmupTotal := a.config.WarmupRequests * len(a.config.URLs)
@@ -273,6 +291,20 @@ func (a *App) runLoad() error {
 
 	jobs := make(chan job, totalRequests)
 	var wg sync.WaitGroup
+
+	// Pre-fill the job queue and close it up front. The channel is buffered to
+	// the full request count so these sends never block. Filling before the
+	// workers start is what lets ramp-up actually stagger load: workers activate
+	// over time and pull from an already-populated queue (previously the queue
+	// was filled only after the ramp sleep, so no gradual load ever occurred).
+	jobID := 0
+	for urlIndex, url := range a.config.URLs {
+		for i := 0; i < a.config.Requests; i++ {
+			jobs <- job{url: url, id: jobID, urlIndex: urlIndex, isWarmup: i < a.config.WarmupRequests}
+			jobID++
+		}
+	}
+	close(jobs)
 
 	// Check if data contains template variables
 	hasTemplates := HasTemplateVariables(a.config.Data)
@@ -316,119 +348,90 @@ func (a *App) runLoad() error {
 					pct := float64(current) / float64(totalRequests) * 100
 					fmt.Fprintf(os.Stderr, "\rProgress: %d/%d requests (%.1f%%)", current, totalRequests, pct)
 				case <-progressDone:
-					// Final update
-					fmt.Fprintf(os.Stderr, "\rProgress: %d/%d requests (100.0%%)\n", totalRequests, totalRequests)
+					// Final update reflects the actual count (may be < total if
+					// the run was interrupted).
+					final := atomic.LoadInt64(&completed)
+					fmt.Fprintf(os.Stderr, "\rProgress: %d/%d requests (%.1f%%)\n", final, totalRequests, float64(final)/float64(totalRequests)*100)
 					return
 				}
 			}
 		}()
 	}
 
-	// Start workers (with ramp-up if configured)
+	// Per-worker activation stagger for ramp-up: worker i becomes active at
+	// t = stagger*i, so effective concurrency climbs linearly from 1 to
+	// Concurrency over the ramp-up duration.
+	var stagger time.Duration
 	if rampUpDuration > 0 && a.config.Concurrency > 1 {
-		// Ramp-up mode: start workers gradually
-		interval := rampUpDuration / time.Duration(a.config.Concurrency-1)
-		for i := 0; i < a.config.Concurrency; i++ {
-			if i > 0 {
-				time.Sleep(interval)
+		stagger = rampUpDuration / time.Duration(a.config.Concurrency-1)
+	}
+
+	worker := func() {
+		for j := range jobs {
+			// Stop pulling new work once cancelled (e.g. SIGINT).
+			select {
+			case <-ctx.Done():
+				return
+			default:
 			}
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
-				for j := range jobs {
-					// Wait for rate limiter if enabled
-					if rateLimiter != nil {
-						<-rateLimiter
-					}
 
-					var body io.Reader
-					if a.config.Data != "" {
-						data := a.config.Data
-						// Apply template substitution if needed
-						if hasTemplates {
-							ctx := NewTemplateContext(j.id+1, j.urlIndex) // Use 1-indexed seq
-							data = SubstituteTemplate(data, ctx)
-						}
-						body = strings.NewReader(data)
-					}
-
-					timing, _ := a.client.MeasureRequest(
-						j.url,
-						a.config.Method,
-						headers,
-						body,
-					)
-
-					// Only record metrics if not a warmup request
-					if timing != nil && !j.isWarmup {
-						a.collector.Record(timing)
-					}
-
-					// Update progress
-					atomic.AddInt64(&completed, 1)
+			// Wait for the rate limiter if enabled, aborting on cancel.
+			if rateLimiter != nil {
+				select {
+				case <-rateLimiter:
+				case <-ctx.Done():
+					return
 				}
-			}()
-		}
-	} else {
-		// Normal mode: start all workers immediately
-		for i := 0; i < a.config.Concurrency; i++ {
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
-				for j := range jobs {
-					// Wait for rate limiter if enabled
-					if rateLimiter != nil {
-						<-rateLimiter
-					}
+			}
 
-					var body io.Reader
-					if a.config.Data != "" {
-						data := a.config.Data
-						// Apply template substitution if needed
-						if hasTemplates {
-							ctx := NewTemplateContext(j.id+1, j.urlIndex) // Use 1-indexed seq
-							data = SubstituteTemplate(data, ctx)
-						}
-						body = strings.NewReader(data)
-					}
-
-					timing, _ := a.client.MeasureRequest(
-						j.url,
-						a.config.Method,
-						headers,
-						body,
-					)
-
-					// Only record metrics if not a warmup request
-					if timing != nil && !j.isWarmup {
-						a.collector.Record(timing)
-					}
-
-					// Update progress
-					atomic.AddInt64(&completed, 1)
+			var body io.Reader
+			if a.config.Data != "" {
+				data := a.config.Data
+				if hasTemplates {
+					tctx := NewTemplateContext(j.id+1, j.urlIndex) // 1-indexed seq
+					data = SubstituteTemplate(data, tctx)
 				}
-			}()
+				body = strings.NewReader(data)
+			}
+
+			timing, _ := a.client.MeasureRequestContext(ctx, j.url, a.config.Method, headers, body)
+
+			// Only record metrics for non-warmup requests that actually ran.
+			if timing != nil && !j.isWarmup && ctx.Err() == nil {
+				a.collector.Record(timing)
+			}
+
+			atomic.AddInt64(&completed, 1)
 		}
 	}
 
-	// Send jobs for each URL
-	jobID := 0
-	for urlIndex, url := range a.config.URLs {
-		for i := 0; i < a.config.Requests; i++ {
-			isWarmup := i < a.config.WarmupRequests
-			jobs <- job{url: url, id: jobID, urlIndex: urlIndex, isWarmup: isWarmup}
-			jobID++
-		}
+	for i := 0; i < a.config.Concurrency; i++ {
+		wg.Add(1)
+		go func(idx int) {
+			defer wg.Done()
+			if stagger > 0 && idx > 0 {
+				select {
+				case <-time.After(stagger * time.Duration(idx)):
+				case <-ctx.Done():
+					return
+				}
+			}
+			worker()
+		}(i)
 	}
-	close(jobs)
 
-	// Wait for all workers to complete
+	// Wait for all workers to complete (or exit early on cancellation).
 	wg.Wait()
 
 	// Stop progress reporting
 	if !a.config.Quiet {
 		close(progressDone)
 		time.Sleep(100 * time.Millisecond) // Give progress goroutine time to print final message
+	}
+
+	interrupted := ctx.Err() != nil
+	if interrupted && !a.config.Quiet {
+		fmt.Fprintf(os.Stderr, "\nInterrupted - reporting statistics for completed requests only.\n")
 	}
 
 	a.collector.Finalize()
@@ -447,8 +450,12 @@ func (a *App) runLoad() error {
 			return fmt.Errorf("failed to export CSV: %w", err)
 		}
 		if !a.config.Quiet {
-			fmt.Printf("\nExported %d requests to %s\n", len(timings), a.config.ExportCSV)
+			fmt.Fprintf(os.Stderr, "\nExported %d requests to %s\n", len(timings), a.config.ExportCSV)
 		}
+	}
+
+	if interrupted {
+		return fmt.Errorf("interrupted")
 	}
 
 	return nil

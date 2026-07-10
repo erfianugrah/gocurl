@@ -33,10 +33,23 @@ func (f *TableFormatter) Format(timing *client.TimingBreakdown) (string, error) 
 
 // Write writes a single timing result as a table to the writer
 func (f *TableFormatter) Write(w io.Writer, timing *client.TimingBreakdown) error {
-	// Status line
-	statusColor := getStatusColor(timing.StatusCode)
-	fmt.Fprintf(w, "%s %s\n", statusColor("✓ Status:"), statusColor(fmt.Sprintf("%d %s", timing.StatusCode, getStatusText(timing.StatusCode))))
-	fmt.Fprintf(w, "%s %s\n", color.GreenString("✓ Time:"), formatTimeDuration(time.Duration(timing.Total)))
+	// Status line. Use a cross for transport failures / error statuses so a
+	// failed request is not decorated with a success checkmark.
+	if timing.Error != "" {
+		fmt.Fprintf(w, "%s %s\n", color.RedString("✗ Error:"), color.RedString(timing.Error))
+		if timing.StatusCode != 0 {
+			fmt.Fprintf(w, "%s %s\n", color.RedString("✗ Status:"), color.RedString(fmt.Sprintf("%d %s", timing.StatusCode, getStatusText(timing.StatusCode))))
+		}
+		fmt.Fprintf(w, "%s %s\n", color.RedString("✗ Time:"), formatTimeDuration(time.Duration(timing.Total)))
+	} else {
+		statusColor := getStatusColor(timing.StatusCode)
+		glyph := "✓"
+		if timing.StatusCode >= 400 {
+			glyph = "✗"
+		}
+		fmt.Fprintf(w, "%s %s\n", statusColor(glyph+" Status:"), statusColor(fmt.Sprintf("%d %s", timing.StatusCode, getStatusText(timing.StatusCode))))
+		fmt.Fprintf(w, "%s %s\n", color.GreenString("✓ Time:"), formatTimeDuration(time.Duration(timing.Total)))
+	}
 
 	if timing.ConnectionReused {
 		fmt.Fprintf(w, "%s %s\n", color.GreenString("✓ Connection:"), "Reused")
@@ -98,6 +111,19 @@ func (f *TableFormatter) Write(w io.Writer, timing *client.TimingBreakdown) erro
 		t.AppendRow(table.Row{
 			"Content Transfer",
 			formatTimeDuration(time.Duration(timing.ContentTransfer)),
+			fmt.Sprintf("%.1f%%", pct),
+		})
+	}
+
+	// Account for time not attributed to a named phase (connection acquisition
+	// from the pool, gaps between trace events) so the percentage column
+	// reconciles to 100%.
+	named := timing.DNSLookup + timing.TCPConnection + timing.TLSHandshake + timing.ServerProcessing + timing.ContentTransfer
+	if other := time.Duration(timing.Total) - time.Duration(named); other > 0 && timing.Total > 0 {
+		pct := (other.Seconds() / total) * 100
+		t.AppendRow(table.Row{
+			"Other/Setup",
+			formatTimeDuration(other),
 			fmt.Sprintf("%.1f%%", pct),
 		})
 	}
@@ -285,90 +311,6 @@ func formatBytes(b int64) string {
 	return fmt.Sprintf("%.1f %ciB", float64(b)/float64(div), "KMGTPE"[exp])
 }
 
-func assessDNS(d metrics.Duration) string {
-	ms := d.Milliseconds()
-	switch {
-	case ms < 20:
-		return color.GreenString("Excellent")
-	case ms < 50:
-		return color.GreenString("Good")
-	case ms < 100:
-		return color.YellowString("Fair")
-	default:
-		return color.RedString("Slow")
-	}
-}
-
-func assessTCP(d metrics.Duration) string {
-	ms := d.Milliseconds()
-	switch {
-	case ms < 50:
-		return color.GreenString("Excellent")
-	case ms < 100:
-		return color.GreenString("Good")
-	case ms < 200:
-		return color.YellowString("Fair")
-	default:
-		return color.RedString("Slow")
-	}
-}
-
-func assessTLS(d metrics.Duration) string {
-	ms := d.Milliseconds()
-	switch {
-	case ms < 100:
-		return color.GreenString("Excellent")
-	case ms < 200:
-		return color.GreenString("Good")
-	case ms < 300:
-		return color.YellowString("Fair")
-	default:
-		return color.RedString("Slow")
-	}
-}
-
-func assessServer(d metrics.Duration) string {
-	ms := d.Milliseconds()
-	switch {
-	case ms < 100:
-		return color.GreenString("Fast")
-	case ms < 500:
-		return color.GreenString("Good")
-	case ms < 1000:
-		return color.YellowString("Moderate")
-	default:
-		return color.RedString("Slow")
-	}
-}
-
-func assessTransfer(d metrics.Duration) string {
-	ms := d.Milliseconds()
-	switch {
-	case ms < 50:
-		return color.GreenString("Fast")
-	case ms < 200:
-		return color.GreenString("Good")
-	case ms < 500:
-		return color.YellowString("Moderate")
-	default:
-		return color.RedString("Slow")
-	}
-}
-
-func assessTotal(d metrics.Duration) string {
-	ms := d.Milliseconds()
-	switch {
-	case ms < 200:
-		return color.GreenString("Excellent")
-	case ms < 500:
-		return color.GreenString("Good")
-	case ms < 1000:
-		return color.YellowString("Acceptable")
-	default:
-		return color.RedString("Needs Improvement")
-	}
-}
-
 // Helper functions for time.Duration (for single requests)
 
 func formatTimeDuration(d time.Duration) string {
@@ -379,90 +321,6 @@ func formatTimeDuration(d time.Duration) string {
 		return fmt.Sprintf("%dms", ms)
 	} else {
 		return fmt.Sprintf("%.2fs", d.Seconds())
-	}
-}
-
-func assessTimeDNS(d time.Duration) string {
-	ms := d.Milliseconds()
-	switch {
-	case ms < 20:
-		return color.GreenString("Excellent")
-	case ms < 50:
-		return color.GreenString("Good")
-	case ms < 100:
-		return color.YellowString("Fair")
-	default:
-		return color.RedString("Slow")
-	}
-}
-
-func assessTimeTCP(d time.Duration) string {
-	ms := d.Milliseconds()
-	switch {
-	case ms < 50:
-		return color.GreenString("Excellent")
-	case ms < 100:
-		return color.GreenString("Good")
-	case ms < 200:
-		return color.YellowString("Fair")
-	default:
-		return color.RedString("Slow")
-	}
-}
-
-func assessTimeTLS(d time.Duration) string {
-	ms := d.Milliseconds()
-	switch {
-	case ms < 100:
-		return color.GreenString("Excellent")
-	case ms < 200:
-		return color.GreenString("Good")
-	case ms < 300:
-		return color.YellowString("Fair")
-	default:
-		return color.RedString("Slow")
-	}
-}
-
-func assessTimeServer(d time.Duration) string {
-	ms := d.Milliseconds()
-	switch {
-	case ms < 100:
-		return color.GreenString("Fast")
-	case ms < 500:
-		return color.GreenString("Good")
-	case ms < 1000:
-		return color.YellowString("Moderate")
-	default:
-		return color.RedString("Slow")
-	}
-}
-
-func assessTimeTransfer(d time.Duration) string {
-	ms := d.Milliseconds()
-	switch {
-	case ms < 50:
-		return color.GreenString("Fast")
-	case ms < 200:
-		return color.GreenString("Good")
-	case ms < 500:
-		return color.YellowString("Moderate")
-	default:
-		return color.RedString("Slow")
-	}
-}
-
-func assessTimeTotal(d time.Duration) string {
-	ms := d.Milliseconds()
-	switch {
-	case ms < 200:
-		return color.GreenString("Excellent")
-	case ms < 500:
-		return color.GreenString("Good")
-	case ms < 1000:
-		return color.YellowString("Acceptable")
-	default:
-		return color.RedString("Needs Improvement")
 	}
 }
 

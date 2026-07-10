@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/erfi/gocurl/internal/client"
 	"github.com/erfi/gocurl/internal/metrics"
@@ -275,53 +274,5 @@ func TestGraphFormatterDrawHistogramEmpty(t *testing.T) {
 	output := buf.String()
 	if output != "" {
 		t.Errorf("drawHistogram with empty histogram should produce no output, got: %q", output)
-	}
-}
-
-func TestCreateHistogramBuckets(t *testing.T) {
-	tests := []struct {
-		name      string
-		latencies []metrics.Duration
-		wantLen   int
-	}{
-		{
-			name:      "empty latencies",
-			latencies: []metrics.Duration{},
-			wantLen:   0,
-		},
-		{
-			name: "single bucket",
-			latencies: []metrics.Duration{
-				metrics.Duration(100000000), // 100ms
-				metrics.Duration(105000000), // 105ms
-				metrics.Duration(110000000), // 110ms
-			},
-			wantLen: 1,
-		},
-		{
-			name: "multiple buckets",
-			latencies: []metrics.Duration{
-				metrics.Duration(10000000),   // 10ms
-				metrics.Duration(100000000),  // 100ms
-				metrics.Duration(1000000000), // 1000ms
-			},
-			wantLen: 3,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			// Convert metrics.Duration to time.Duration for the function
-			timeDurations := make([]time.Duration, len(tt.latencies))
-			for i, d := range tt.latencies {
-				timeDurations[i] = time.Duration(d)
-			}
-
-			histogram := createHistogramBuckets(timeDurations)
-
-			if len(histogram) != tt.wantLen {
-				t.Errorf("createHistogramBuckets() created %d buckets, want %d", len(histogram), tt.wantLen)
-			}
-		})
 	}
 }

@@ -128,8 +128,13 @@ func TestCollectorCalculateMultiple(t *testing.T) {
 		t.Errorf("Expected 5 total requests, got %d", stats.TotalRequests)
 	}
 
-	if stats.SuccessfulRequests != 5 {
-		t.Errorf("Expected 5 successful requests, got %d", stats.SuccessfulRequests)
+	// 4 x 2xx are successful; the 500 is now counted as a failure.
+	if stats.SuccessfulRequests != 4 {
+		t.Errorf("Expected 4 successful requests, got %d", stats.SuccessfulRequests)
+	}
+
+	if stats.FailedRequests != 1 {
+		t.Errorf("Expected 1 failed request (HTTP 500), got %d", stats.FailedRequests)
 	}
 
 	if time.Duration(stats.MinLatency) != 50*time.Millisecond {
